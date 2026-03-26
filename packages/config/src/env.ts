@@ -1,27 +1,4 @@
 import { z } from 'zod';
-import { config as loadDotenv } from 'dotenv';
-import { existsSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-
-function loadEnvironmentFiles() {
-  const envPaths = new Set<string>();
-  let currentDir = process.cwd();
-  for (let i = 0; i < 5; i += 1) {
-    envPaths.add(resolve(currentDir, '.env'));
-    envPaths.add(resolve(currentDir, '.env.local'));
-    const parent = dirname(currentDir);
-    if (parent === currentDir) break;
-    currentDir = parent;
-  }
-
-  for (const path of envPaths) {
-    if (existsSync(path)) {
-      loadDotenv({ path, override: path.endsWith('.env.local') });
-    }
-  }
-}
-
-loadEnvironmentFiles();
 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
