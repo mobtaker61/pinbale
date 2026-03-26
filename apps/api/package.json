@@ -7,7 +7,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsup src/index.ts --format esm --out-dir dist",
+    "build": "tsup src/index.ts --format esm --out-dir dist --external fastify --external @fastify/swagger --external @fastify/swagger-ui --external @fastify/rate-limit --external ioredis --external bullmq --external undici --external pino --external pino-pretty --external zod --external playwright --external dotenv",
     "start": "node dist/index.js"
   },
   "dependencies": {
