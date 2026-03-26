@@ -1,0 +1,22 @@
+{
+  "name": "@pinbale/api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsup src/index.ts --format esm --dts --out-dir dist",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@pinbale/bale": "*",
+    "@pinbale/cache": "*",
+    "@pinbale/config": "*",
+    "@pinbale/core": "*",
+    "@pinbale/observability": "*",
+    "@pinbale/providers": "*",
+    "@pinbale/queue": "*"
+  }
+}

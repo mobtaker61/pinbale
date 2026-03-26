@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "composite": true,
+    "rootDir": ".",
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@pinbale/core": ["packages/core/src/index.ts"],
+      "@pinbale/config": ["packages/config/src/index.ts"],
+      "@pinbale/observability": ["packages/observability/src/index.ts"],
+      "@pinbale/cache": ["packages/cache/src/index.ts"],
+      "@pinbale/queue": ["packages/queue/src/index.ts"],
+      "@pinbale/bale": ["packages/bale/src/index.ts"],
+      "@pinbale/providers": ["packages/providers/src/index.ts"],
+      "@pinbale/testing": ["packages/testing/src/index.ts"]
+    }
+  }
+}
