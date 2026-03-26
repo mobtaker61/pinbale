@@ -36,6 +36,7 @@
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/swagger": "^9.5.1",
     "@fastify/swagger-ui": "^5.2.2",
+    "@myno_21/pinterest-scraper": "^1.0.4",
     "bullmq": "^5.46.0",
     "dotenv": "^16.6.1",
     "fastify": "^5.2.2",

@@ -18,11 +18,12 @@ export async function registerHealthRoutes(app: FastifyInstance) {
     const providers = app.container.providers;
     const health = await Promise.all([
       providers.officialProvider.healthCheck(),
+      providers.mynoProvider.healthCheck(),
       providers.playwrightProvider.healthCheck(),
       providers.cacheProvider.healthCheck()
     ]);
     await Promise.all(
-      health.map((h) =>
+      health.map((h: { provider: string }) =>
         app.container.cache.set(CACHE_KEYS.providerHealth(h.provider), h, app.container.config.SEARCH_CACHE_TTL_SEC)
       )
     );

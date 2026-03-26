@@ -1,4 +1,4 @@
-export type ProviderName = 'official_api' | 'playwright' | 'cache';
+export type ProviderName = 'official_api' | 'myno_scraper' | 'playwright' | 'cache';
 
 export type NormalizedSearchResult = {
   id: string;

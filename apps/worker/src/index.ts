@@ -25,6 +25,7 @@ import {
   type SearchResultPage
 } from '@pinbale/core';
 import { BrowserManager, OfficialApiPinterestProvider, PlaywrightPinterestProvider } from '@pinbale/providers';
+import * as Providers from '@pinbale/providers';
 
 const config = getConfig();
 const logger = createLogger(config.LOG_LEVEL);
@@ -57,6 +58,15 @@ const official = new OfficialApiPinterestProvider({
   accessToken: config.PINTEREST_ACCESS_TOKEN,
   timeoutMs: 12000
 });
+const myno = new (
+  Providers as unknown as {
+    MynoScraperPinterestProvider: new () => {
+      getName(): string;
+      search: (query: string, options: unknown) => Promise<SearchResultPage>;
+      healthCheck: () => Promise<unknown>;
+    };
+  }
+).MynoScraperPinterestProvider();
 
 new Worker<SearchJobPayload & { chatId: string }>(
   QUEUE_NAMES.search,
@@ -178,9 +188,9 @@ async function runProviderChain(query: string, traceId: string): Promise<SearchR
 }
 
 function resolveProviders() {
-  if (config.PINTEREST_PROVIDER_MODE === 'official') return [official];
-  if (config.PINTEREST_PROVIDER_MODE === 'playwright') return [playwright];
-  return [official, playwright];
+  if (config.PINTEREST_PROVIDER_MODE === 'official') return [official, myno];
+  if (config.PINTEREST_PROVIDER_MODE === 'playwright') return [myno, playwright];
+  return [official, myno, playwright];
 }
 
 function slicePage(source: SearchResultPage, pageNumber: number, perPage: number): SearchResultPage {

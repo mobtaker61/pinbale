@@ -1,4 +1,5 @@
 export * from './official-api-provider.js';
+export { MynoScraperPinterestProvider } from './myno-scraper-provider.js';
 export * from './playwright-provider.js';
 export * from './cached-fallback-provider.js';
 export * from './playwright/browser-manager.js';

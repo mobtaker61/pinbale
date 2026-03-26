@@ -9,6 +9,7 @@ import {
   OfficialApiPinterestProvider,
   PlaywrightPinterestProvider
 } from '@pinbale/providers';
+import * as Providers from '@pinbale/providers';
 import type { PinterestSearchProvider } from '@pinbale/core';
 import { SearchService } from './services/search-service.js';
 
@@ -66,10 +67,16 @@ export function buildContainer() {
       : undefined
   });
   const cacheProvider = new CachedFallbackProvider(cache);
+  const mynoProvider = new (
+    Providers as unknown as {
+      MynoScraperPinterestProvider: new () => PinterestSearchProvider;
+    }
+  ).MynoScraperPinterestProvider();
 
   const providerChain = resolveProviderChain(
     config.PINTEREST_PROVIDER_MODE,
     officialProvider,
+    mynoProvider,
     playwrightProvider,
     cacheProvider
   );
@@ -90,7 +97,7 @@ export function buildContainer() {
     queues,
     bale,
     browserManager,
-    providers: { officialProvider, playwrightProvider, cacheProvider },
+    providers: { officialProvider, mynoProvider, playwrightProvider, cacheProvider },
     searchService
   };
 }
@@ -98,10 +105,11 @@ export function buildContainer() {
 function resolveProviderChain(
   mode: 'official' | 'playwright' | 'hybrid',
   official: PinterestSearchProvider,
+  myno: PinterestSearchProvider,
   playwright: PinterestSearchProvider,
   cache: PinterestSearchProvider
 ): PinterestSearchProvider[] {
-  if (mode === 'official') return [official, cache];
-  if (mode === 'playwright') return [playwright, cache];
-  return [official, playwright, cache];
+  if (mode === 'official') return [official, myno, cache];
+  if (mode === 'playwright') return [myno, playwright, cache];
+  return [official, myno, playwright, cache];
 }

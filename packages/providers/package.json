@@ -4,12 +4,12 @@
   "private": true,
   "type": "module",
   "main": "dist/index.js",
-  "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsup src/index.ts --format esm --out-dir dist --external playwright --external playwright-core --external chromium-bidi --external undici"
   },
   "dependencies": {
     "@pinbale/cache": "*",
-    "@pinbale/core": "*"
+    "@pinbale/core": "*",
+    "@myno_21/pinterest-scraper": "^1.0.4"
   }
 }

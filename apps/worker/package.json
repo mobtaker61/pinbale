@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "main": "dist/index.js",
-  "types": "dist/index.d.ts",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsup src/index.ts --format esm --out-dir dist --external bullmq --external ioredis --external undici --external pino --external pino-pretty --external zod --external playwright --external dotenv",
