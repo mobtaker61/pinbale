@@ -8,7 +8,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w @pinbale/api && npm run build -w @pinbale/worker",
+    "build": "npm run build --workspaces",
     "dev": "npm run dev -w @pinbale/api",
     "dev:worker": "npm run dev -w @pinbale/worker",
     "lint": "eslint . --ext .ts",
