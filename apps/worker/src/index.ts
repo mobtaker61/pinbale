@@ -17,7 +17,13 @@ import {
   formatProviderFailure,
   formatResultPage
 } from '@pinbale/bale';
-import { CACHE_KEYS, InternalSearchError, paginate, validateQuery } from '@pinbale/core';
+import {
+  CACHE_KEYS,
+  InternalSearchError,
+  paginate,
+  validateQuery,
+  type SearchResultPage
+} from '@pinbale/core';
 import { BrowserManager, OfficialApiPinterestProvider, PlaywrightPinterestProvider } from '@pinbale/providers';
 
 const config = getConfig();
@@ -62,22 +68,26 @@ new Worker<SearchJobPayload & { chatId: string }>(
       const normalized = validateQuery(query, 120, config.bannedKeywords);
       const cacheKey = CACHE_KEYS.search(normalized);
 
-      const cached = await cache.get<any>(cacheKey);
-      const pageData =
-        cached ??
-        (await runProviderChain(normalized, requestId).then(async (live) => {
-          await cache.set(cacheKey, live, config.SEARCH_CACHE_TTL_SEC);
-          return live;
-        }));
+      const cached = await cache.get<SearchResultPage>(cacheKey);
+      let pageData: SearchResultPage;
+      if (cached) {
+        pageData = cached;
+      } else {
+        pageData = await runProviderChain(normalized, requestId);
+        await cache.set(cacheKey, pageData, config.SEARCH_CACHE_TTL_SEC);
+      }
 
       const sliced = slicePage(pageData, page, config.SEARCH_RESULTS_PER_PAGE);
       if (sliced.results.length === 0) {
         await bale.sendText(chatId, formatNoResults(normalized));
       } else {
+        const deliveryImageUrl = getDeliveryImageUrl(
+          sliced.results[0]?.thumbnailUrl ?? sliced.results[0]?.imageUrl
+        );
         await bale.sendResultWithOptionalPhoto(
           chatId,
           formatResultPage(sliced),
-          sliced.results[0]?.thumbnailUrl
+          deliveryImageUrl
         );
       }
 
@@ -87,7 +97,7 @@ new Worker<SearchJobPayload & { chatId: string }>(
         normalizedQuery: normalized,
         currentOffset: (page - 1) * config.SEARCH_RESULTS_PER_PAGE,
         currentPage: page,
-        recentResultIds: sliced.results.map((r: any) => r.id)
+        recentResultIds: sliced.results.map((r) => r.id)
       });
     } catch (error) {
       logger.error({ err: error, requestId }, 'search job failed');
@@ -131,7 +141,7 @@ new Worker<ScreenshotArchivePayload>(
 
 logger.info('worker started');
 
-async function runProviderChain(query: string, traceId: string) {
+async function runProviderChain(query: string, traceId: string): Promise<SearchResultPage> {
   let lastError: Error | null = null;
   const providers = resolveProviders();
   for (const provider of providers) {
@@ -173,7 +183,7 @@ function resolveProviders() {
   return [official, playwright];
 }
 
-function slicePage(source: any, pageNumber: number, perPage: number) {
+function slicePage(source: SearchResultPage, pageNumber: number, perPage: number): SearchResultPage {
   const total = source.results.length;
   const { start, end, hasNextPage } = paginate(total, pageNumber, perPage);
   return {
@@ -181,9 +191,18 @@ function slicePage(source: any, pageNumber: number, perPage: number) {
     page: pageNumber,
     perPage,
     hasNextPage,
-    results: source.results.slice(start, end).map((item: any, idx: number) => ({
+    results: source.results.slice(start, end).map((item, idx) => ({
       ...item,
       rank: start + idx + 1
     }))
   };
+}
+
+function getDeliveryImageUrl(imageUrl?: string | null): string | null {
+  if (!imageUrl) return null;
+  const publicBaseUrl = (config as unknown as { PUBLIC_BASE_URL?: string }).PUBLIC_BASE_URL;
+  if (!publicBaseUrl) return imageUrl;
+  const proxy = new URL('/media/proxy', publicBaseUrl);
+  proxy.searchParams.set('u', imageUrl);
+  return proxy.toString();
 }

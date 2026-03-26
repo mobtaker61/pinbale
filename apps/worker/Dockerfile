@@ -1,12 +1,22 @@
-FROM node:22-bookworm-slim
+FROM mcr.microsoft.com/playwright:v1.51.1-noble
 
 WORKDIR /app
-COPY package.json tsconfig.base.json tsconfig.json ./
+
+COPY package.json package-lock.json tsconfig.base.json tsconfig.json ./
+COPY apps/api/package.json ./apps/api/package.json
+COPY apps/worker/package.json ./apps/worker/package.json
+COPY packages/core/package.json ./packages/core/package.json
+COPY packages/config/package.json ./packages/config/package.json
+COPY packages/observability/package.json ./packages/observability/package.json
+COPY packages/cache/package.json ./packages/cache/package.json
+COPY packages/queue/package.json ./packages/queue/package.json
+COPY packages/bale/package.json ./packages/bale/package.json
+COPY packages/providers/package.json ./packages/providers/package.json
+COPY packages/testing/package.json ./packages/testing/package.json
+RUN npm install
+
 COPY apps ./apps
 COPY packages ./packages
-
-RUN npm install
 RUN npm run build
-RUN npx playwright install --with-deps chromium
 
 CMD ["node", "apps/worker/dist/index.js"]

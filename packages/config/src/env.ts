@@ -10,6 +10,7 @@ const EnvSchema = z.object({
   BALE_BOT_TOKEN: z.string().min(1),
   BALE_WEBHOOK_SECRET: z.string().optional(),
   BALE_API_BASE_URL: z.string().url().optional(),
+  PUBLIC_BASE_URL: z.string().url().optional(),
 
   PINTEREST_PROVIDER_MODE: z.enum(['official', 'playwright', 'hybrid']).default('hybrid'),
   PINTEREST_API_BASE_URL: z.string().url().optional(),

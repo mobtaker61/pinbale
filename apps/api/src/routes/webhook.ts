@@ -4,7 +4,6 @@ import {
   faMessages,
   formatHelpMessage,
   formatInvalidInput,
-  formatNoResults,
   formatProviderFailure,
   formatRateLimited,
   formatSearchingMessage,

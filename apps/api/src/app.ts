@@ -6,6 +6,7 @@ import { buildContainer } from './container.js';
 import { registerWebhookRoutes } from './routes/webhook.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerInternalRoutes } from './routes/internal.js';
+import { registerMediaRoutes } from './routes/media.js';
 
 export async function createApp() {
   const container = buildContainer();
@@ -37,6 +38,7 @@ export async function createApp() {
   await registerWebhookRoutes(app);
   await registerHealthRoutes(app);
   await registerInternalRoutes(app);
+  await registerMediaRoutes(app);
 
   app.addHook('onClose', async () => {
     await container.browserManager.close();
