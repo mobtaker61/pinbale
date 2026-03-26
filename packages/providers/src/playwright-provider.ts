@@ -8,7 +8,7 @@ import { ProviderBlockedError, ProviderTimeoutError } from '@pinbale/core';
 import type { BrowserManager } from './playwright/browser-manager.js';
 import { detectBlockedState } from './playwright/block-detector.js';
 import { saveFailureArtifacts } from './playwright/diagnostics.js';
-import { parsePinterestCards } from './playwright/page-parser.js';
+import { parsePinterestCards, parsePinterestPinsFromLinks } from './playwright/page-parser.js';
 import type { BrowserProviderConfig } from './playwright/types.js';
 
 export class PlaywrightPinterestProvider implements PinterestSearchProvider {
@@ -53,7 +53,23 @@ export class PlaywrightPinterestProvider implements PinterestSearchProvider {
         throw new ProviderBlockedError(`Playwright provider blocked: ${blocked}`);
       }
 
-      const cards = await this.retry(async () => parsePinterestCards(page, options.maxResults), 2);
+      // Give the page time to hydrate and render results, then scroll a bit to trigger lazy loads.
+      await page.waitForTimeout(400);
+      for (let i = 0; i < 3; i += 1) {
+        await page.mouse.wheel(0, 1400);
+        await page.waitForTimeout(350);
+      }
+
+      const cards = await this.retry(async () => {
+        const primary = await parsePinterestCards(page, options.maxResults);
+        if (primary.length > 0) return primary;
+        return parsePinterestPinsFromLinks(page, options.maxResults);
+      }, 2);
+
+      if (cards.length === 0) {
+        await saveFailureArtifacts(page, this.cfg.artifactsDir, 'empty_results');
+        throw new ProviderTimeoutError('No results extracted from Pinterest page');
+      }
       return {
         query,
         page: options.page,
