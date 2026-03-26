@@ -45,6 +45,16 @@ export class SearchService {
           maxResults: this.deps.config.SEARCH_RESULTS_MAX,
           traceId
         });
+        // Important: some providers can return empty results without throwing (e.g. auth/scope mismatch).
+        // In that case we should fall back to the next provider to avoid "no results" false negatives.
+        if (page.results.length === 0 && provider.getName() !== 'cache') {
+          this.deps.logger.warn(
+            { provider: provider.getName(), durationMs: Date.now() - started, traceId },
+            'provider returned empty results, trying fallback'
+          );
+          lastError = new InternalSearchError('Empty results from provider');
+          continue;
+        }
         await this.deps.cache.set(cacheKey, page, this.deps.config.SEARCH_CACHE_TTL_SEC);
         await this.deps.cache.set(staleCacheKey, page, this.deps.config.SEARCH_CACHE_TTL_SEC * 3);
         this.deps.logger.info(
