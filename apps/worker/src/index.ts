@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { Worker } from 'bullmq';
 import { getConfig } from '@pinbale/config';
 import { createLogger } from '@pinbale/observability';
-import { createRedisClient, RedisCacheService } from '@pinbale/cache';
+import { createRedisClient, RedisCacheService, SessionService } from '@pinbale/cache';
 import {
   QUEUE_NAMES,
   type ProviderHealthPayload,
@@ -10,12 +10,27 @@ import {
   type ScreenshotArchivePayload,
   type SearchJobPayload
 } from '@pinbale/queue';
+import {
+  BaleAdapter,
+  BaleClient,
+  formatNoResults,
+  formatProviderFailure,
+  formatResultPage
+} from '@pinbale/bale';
+import { CACHE_KEYS, InternalSearchError, paginate, validateQuery } from '@pinbale/core';
 import { BrowserManager, OfficialApiPinterestProvider, PlaywrightPinterestProvider } from '@pinbale/providers';
 
 const config = getConfig();
 const logger = createLogger(config.LOG_LEVEL);
 const redis = createRedisClient(config.REDIS_URL);
 const cache = new RedisCacheService(redis);
+const sessionService = new SessionService(cache, config.SESSION_TTL_SEC);
+
+const baleClient = new BaleClient(
+  config.BALE_BOT_TOKEN,
+  config.BALE_API_BASE_URL ?? 'https://tapi.bale.ai/bot'
+);
+const bale = new BaleAdapter(baleClient);
 
 const browserManager = new BrowserManager({
   headless: config.PLAYWRIGHT_HEADLESS,
@@ -37,10 +52,47 @@ const official = new OfficialApiPinterestProvider({
   timeoutMs: 12000
 });
 
-new Worker<SearchJobPayload>(
+new Worker<SearchJobPayload & { chatId: string }>(
   QUEUE_NAMES.search,
   async (job) => {
-    logger.info({ jobId: job.id, userId: job.data.userId }, 'processing search job');
+    const { userId, chatId, query, page, requestId } = job.data;
+    logger.info({ jobId: job.id, userId, page, requestId }, 'processing search job');
+
+    try {
+      const normalized = validateQuery(query, 120, config.bannedKeywords);
+      const cacheKey = CACHE_KEYS.search(normalized);
+
+      const cached = await cache.get<any>(cacheKey);
+      const pageData =
+        cached ??
+        (await runProviderChain(normalized, requestId).then(async (live) => {
+          await cache.set(cacheKey, live, config.SEARCH_CACHE_TTL_SEC);
+          return live;
+        }));
+
+      const sliced = slicePage(pageData, page, config.SEARCH_RESULTS_PER_PAGE);
+      if (sliced.results.length === 0) {
+        await bale.sendText(chatId, formatNoResults(normalized));
+      } else {
+        await bale.sendResultWithOptionalPhoto(
+          chatId,
+          formatResultPage(sliced),
+          sliced.results[0]?.thumbnailUrl
+        );
+      }
+
+      await sessionService.set({
+        userId,
+        lastQuery: normalized,
+        normalizedQuery: normalized,
+        currentOffset: (page - 1) * config.SEARCH_RESULTS_PER_PAGE,
+        currentPage: page,
+        recentResultIds: sliced.results.map((r: any) => r.id)
+      });
+    } catch (error) {
+      logger.error({ err: error, requestId }, 'search job failed');
+      await bale.sendText(chatId, formatProviderFailure());
+    }
   },
   { connection: redis, concurrency: 8 }
 );
@@ -78,3 +130,60 @@ new Worker<ScreenshotArchivePayload>(
 );
 
 logger.info('worker started');
+
+async function runProviderChain(query: string, traceId: string) {
+  let lastError: Error | null = null;
+  const providers = resolveProviders();
+  for (const provider of providers) {
+    const started = Date.now();
+    try {
+      const page = await provider.search(query, {
+        page: 1,
+        perPage: config.SEARCH_RESULTS_PER_PAGE,
+        maxResults: config.SEARCH_RESULTS_MAX,
+        traceId
+      });
+      if (page.results.length === 0 && provider.getName() !== 'cache') {
+        logger.warn(
+          { provider: provider.getName(), durationMs: Date.now() - started, traceId },
+          'provider returned empty'
+        );
+        lastError = new InternalSearchError('Empty results from provider');
+        continue;
+      }
+      logger.info(
+        { provider: provider.getName(), durationMs: Date.now() - started, traceId },
+        'provider search success'
+      );
+      return page;
+    } catch (err) {
+      lastError = err as Error;
+      logger.warn(
+        { provider: provider.getName(), err: (err as Error).message, traceId },
+        'provider failed'
+      );
+    }
+  }
+  throw lastError ?? new InternalSearchError('All providers failed');
+}
+
+function resolveProviders() {
+  if (config.PINTEREST_PROVIDER_MODE === 'official') return [official];
+  if (config.PINTEREST_PROVIDER_MODE === 'playwright') return [playwright];
+  return [official, playwright];
+}
+
+function slicePage(source: any, pageNumber: number, perPage: number) {
+  const total = source.results.length;
+  const { start, end, hasNextPage } = paginate(total, pageNumber, perPage);
+  return {
+    ...source,
+    page: pageNumber,
+    perPage,
+    hasNextPage,
+    results: source.results.slice(start, end).map((item: any, idx: number) => ({
+      ...item,
+      rank: start + idx + 1
+    }))
+  };
+}

@@ -1,5 +1,6 @@
 export type SearchJobPayload = {
   userId: string;
+  chatId: string;
   query: string;
   page: number;
   requestId: string;

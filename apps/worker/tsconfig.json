@@ -10,6 +10,7 @@
     { "path": "../../packages/observability" },
     { "path": "../../packages/cache" },
     { "path": "../../packages/queue" },
+    { "path": "../../packages/bale" },
     { "path": "../../packages/providers" }
   ]
 }

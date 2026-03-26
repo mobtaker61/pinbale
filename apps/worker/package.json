@@ -12,7 +12,9 @@
   },
   "dependencies": {
     "@pinbale/cache": "*",
+    "@pinbale/bale": "*",
     "@pinbale/config": "*",
+    "@pinbale/core": "*",
     "@pinbale/observability": "*",
     "@pinbale/providers": "*",
     "@pinbale/queue": "*"

@@ -7,7 +7,6 @@ import {
   formatNoResults,
   formatProviderFailure,
   formatRateLimited,
-  formatResultPage,
   formatSearchingMessage,
   formatStartMessage,
   parseBaleTextCommand
@@ -113,16 +112,12 @@ export async function registerWebhookRoutes(app: FastifyInstance) {
       }
 
       await app.container.bale.sendText(chatId, formatSearchingMessage());
-      const resultPage = await app.container.searchService.search(query, page, request.id);
-      if (resultPage.results.length === 0) {
-        await app.container.bale.sendText(chatId, formatNoResults(query));
-      } else {
-        await app.container.bale.sendResultWithOptionalPhoto(
-          chatId,
-          formatResultPage(resultPage),
-          resultPage.results[0]?.thumbnailUrl
-        );
-      }
+      // Important: webhook must respond fast; heavy work runs asynchronously in worker.
+      await app.container.queues.searchQueue.add(
+        'search',
+        { userId, chatId, query, page, requestId: request.id },
+        { removeOnComplete: true, attempts: 2, backoff: { type: 'exponential', delay: 1000 } }
+      );
 
       await app.container.sessionService.set({
         userId,
@@ -130,7 +125,7 @@ export async function registerWebhookRoutes(app: FastifyInstance) {
         normalizedQuery: query,
         currentOffset: (page - 1) * app.container.config.SEARCH_RESULTS_PER_PAGE,
         currentPage: page,
-        recentResultIds: resultPage.results.map((r) => r.id)
+        recentResultIds: session.recentResultIds
       });
       return { ok: true };
     } catch (error) {
