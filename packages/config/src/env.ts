@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { loadEnvFiles } from './load-env.js';
 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -57,8 +58,19 @@ export type AppConfig = z.infer<typeof EnvSchema> & {
 let cached: AppConfig | null = null;
 
 export function getConfig(): AppConfig {
+  loadEnvFiles();
   if (cached) return cached;
-  const parsed = EnvSchema.parse(process.env);
+  let parsed: z.infer<typeof EnvSchema>;
+  try {
+    parsed = EnvSchema.parse(process.env);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      console.error(
+        'خطای پیکربندی: فایل .env را در ریشهٔ پروژه بسازید (مثلاً با کپی از .env.example) و حداقل REDIS_URL، BALE_BOT_TOKEN و ADMIN_TOKEN را مقداردهی کنید.'
+      );
+    }
+    throw err;
+  }
   cached = {
     ...parsed,
     allowlistUserIds: parsed.ALLOWLIST_USER_IDS

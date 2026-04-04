@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { mkdir } from 'node:fs/promises';
 import { Worker } from 'bullmq';
 import { getConfig } from '@pinbale/config';

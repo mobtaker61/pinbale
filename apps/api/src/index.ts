@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import { getConfig } from '@pinbale/config';
 import { createApp } from './app.js';
 

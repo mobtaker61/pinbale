@@ -6,5 +6,8 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsup src/index.ts --format esm --out-dir dist"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1"
   }
 }
