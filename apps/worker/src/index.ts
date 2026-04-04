@@ -112,7 +112,7 @@ new Worker<MaterialsJobPayload>(
       if (topic) {
         await bale.sendText(chatId, faMessages.noLocalImagesInTopic(topic));
       } else {
-        await bale.sendText(chatId, faMessages.noLocalImages);
+        await bale.sendText(chatId, faMessages.noLocalImagesRoot);
       }
       await cacheSvc.set(
         CACHE_KEYS.lastMaterialsTopic(userId),
@@ -181,7 +181,7 @@ new Worker<MaterialsJobPayload>(
     }
 
     if (successCount > 0) {
-      await bale.sendTextWithAgainButton(chatId, faMessages.materialsBatchDone);
+      await bale.sendMaterialsBatchDoneKeyboard(chatId, faMessages.materialsBatchDone);
     }
   },
   { connection: redis, concurrency: 1 }

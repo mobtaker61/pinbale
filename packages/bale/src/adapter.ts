@@ -1,5 +1,5 @@
 import { BaleDeliveryError } from '@pinbale/core';
-import { CALLBACK_MATERIALS_AGAIN } from './constants.js';
+import { CALLBACK_MATERIALS_AGAIN, CALLBACK_OPEN_FOLDER_LIST } from './constants.js';
 import { BaleClient } from './client.js';
 import { faMessages } from './messages.js';
 
@@ -26,12 +26,18 @@ export class BaleAdapter {
     });
   }
 
-  async sendTextWithAgainButton(chatId: string, text: string) {
+  /** پایان نوبت ارسال: دوباره همان منبع + بازگشت به لیست موضوع‌ها */
+  async sendMaterialsBatchDoneKeyboard(chatId: string, text: string) {
     await this.client.sendMessage({
       chatId,
       text,
       replyMarkup: {
-        inline_keyboard: [[{ text: faMessages.againButton, callback_data: CALLBACK_MATERIALS_AGAIN }]]
+        inline_keyboard: [
+          [
+            { text: faMessages.againButton, callback_data: CALLBACK_MATERIALS_AGAIN },
+            { text: faMessages.listFoldersButton, callback_data: CALLBACK_OPEN_FOLDER_LIST }
+          ]
+        ]
       }
     });
   }

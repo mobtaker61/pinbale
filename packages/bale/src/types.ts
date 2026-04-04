@@ -19,6 +19,5 @@ export type BaleCommand =
   | { type: 'start' }
   | { type: 'help' }
   | { type: 'listFolders' }
-  | { type: 'materials' }
   | { type: 'legacySearchCommand' }
   | { type: 'unknown'; text: string };

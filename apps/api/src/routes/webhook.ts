@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   CALLBACK_FOLDER_PICK_PREFIX,
   CALLBACK_MATERIALS_AGAIN,
+  CALLBACK_OPEN_FOLDER_LIST,
   faMessages,
   formatHelpMessage,
   formatRateLimited,
@@ -53,6 +54,32 @@ async function enqueueMaterials(
     { userId, chatId, requestId, sourceSubfolder },
     { removeOnComplete: true, attempts: 2, backoff: { type: 'exponential', delay: 1000 } }
   );
+}
+
+async function sendFolderPicker(app: FastifyInstance, chatId: string, userId: string): Promise<void> {
+  const { root } = resolveLocalImageDirs(process.cwd(), app.container.config.LOCAL_IMAGES_DIR);
+  let folders: string[];
+  try {
+    folders = await listTopicSubfolders(root);
+  } catch {
+    await app.container.bale.sendText(chatId, faMessages.listFoldersEmpty);
+    return;
+  }
+  if (folders.length === 0) {
+    await app.container.bale.sendText(chatId, faMessages.listFoldersEmpty);
+    return;
+  }
+  const shown = folders.slice(0, MAX_FOLDER_BUTTONS);
+  await app.container.cache.set(CACHE_KEYS.folderPick(userId), folders, FOLDER_PICK_TTL_SEC);
+  const rows = shown.map((name, i) => {
+    const label = name.length > 36 ? `${name.slice(0, 34)}…` : name;
+    return [{ text: label, callbackData: `${CALLBACK_FOLDER_PICK_PREFIX}${i}` }];
+  });
+  let intro = faMessages.listFoldersIntro;
+  if (folders.length > MAX_FOLDER_BUTTONS) {
+    intro += `\n(فقط ${MAX_FOLDER_BUTTONS} مورد اول؛ برای بقیه نام پوشه را کوتاه‌تر کنید یا بعداً توسعه دهید.)`;
+  }
+  await app.container.bale.sendTextWithInlineKeyboard(chatId, intro, rows);
 }
 
 export async function registerWebhookRoutes(app: FastifyInstance) {
@@ -115,6 +142,16 @@ export async function registerWebhookRoutes(app: FastifyInstance) {
             ? last.sourceSubfolder
             : undefined;
         await enqueueMaterials(app, userId, chatId, request.id, sourceSubfolder);
+        return { ok: true };
+      }
+
+      if (cb.data === CALLBACK_OPEN_FOLDER_LIST) {
+        try {
+          await app.container.bale.answerCallbackQuery(cb.id, faMessages.callbackAck);
+        } catch {
+          /* ignore */
+        }
+        await sendFolderPicker(app, chatId, userId);
         return { ok: true };
       }
 
@@ -186,33 +223,7 @@ export async function registerWebhookRoutes(app: FastifyInstance) {
       return { ok: true };
     }
     if (command.type === 'listFolders') {
-      const { root } = resolveLocalImageDirs(process.cwd(), app.container.config.LOCAL_IMAGES_DIR);
-      let folders: string[];
-      try {
-        folders = await listTopicSubfolders(root);
-      } catch {
-        await app.container.bale.sendText(chatId, faMessages.listFoldersEmpty);
-        return { ok: true };
-      }
-      if (folders.length === 0) {
-        await app.container.bale.sendText(chatId, faMessages.listFoldersEmpty);
-        return { ok: true };
-      }
-      const shown = folders.slice(0, MAX_FOLDER_BUTTONS);
-      await app.container.cache.set(CACHE_KEYS.folderPick(userId), folders, FOLDER_PICK_TTL_SEC);
-      const rows = shown.map((name, i) => {
-        const label = name.length > 36 ? `${name.slice(0, 34)}…` : name;
-        return [{ text: label, callbackData: `${CALLBACK_FOLDER_PICK_PREFIX}${i}` }];
-      });
-      let intro = faMessages.listFoldersIntro;
-      if (folders.length > MAX_FOLDER_BUTTONS) {
-        intro += `\n(فقط ${MAX_FOLDER_BUTTONS} مورد اول؛ برای بقیه نام پوشه را کوتاه‌تر کنید یا بعداً توسعه دهید.)`;
-      }
-      await app.container.bale.sendTextWithInlineKeyboard(chatId, intro, rows);
-      return { ok: true };
-    }
-    if (command.type === 'materials') {
-      await enqueueMaterials(app, userId, chatId, request.id);
+      await sendFolderPicker(app, chatId, userId);
       return { ok: true };
     }
     if (command.type === 'legacySearchCommand') {

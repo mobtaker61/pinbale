@@ -2,13 +2,14 @@ import { describe, expect, test } from 'vitest';
 import { parseBaleTextCommand } from '@pinbale/bale';
 
 describe('parseBaleTextCommand', () => {
-  test('parses /pin', () => {
-    expect(parseBaleTextCommand('/pin')).toEqual({ type: 'materials' });
-    expect(parseBaleTextCommand('  /pin  ')).toEqual({ type: 'materials' });
-  });
-
   test('parses /list', () => {
     expect(parseBaleTextCommand('/list')).toEqual({ type: 'listFolders' });
+    expect(parseBaleTextCommand('/list@Bot')).toEqual({ type: 'listFolders' });
+  });
+
+  test('/pin and /مواد are not commands (unknown)', () => {
+    expect(parseBaleTextCommand('/pin')).toEqual({ type: 'unknown', text: '/pin' });
+    expect(parseBaleTextCommand('/مواد')).toEqual({ type: 'unknown', text: '/مواد' });
   });
 
   test('parses /start with bot suffix', () => {
