@@ -4,12 +4,16 @@ import { Worker } from 'bullmq';
 import { getConfig } from '@pinbale/config';
 import type { AppConfig } from '@pinbale/config';
 import { createLogger } from '@pinbale/observability';
-import { createRedisClient } from '@pinbale/cache';
+import { createRedisClient, RedisCacheService } from '@pinbale/cache';
 import { QUEUE_NAMES, type MaterialsJobPayload } from '@pinbale/queue';
 import { BaleAdapter, BaleClient, faMessages } from '@pinbale/bale';
 import {
+  CACHE_KEYS,
+  isSafeTopicFolderName,
+  listPendingInTopicFolder,
   listPendingLocalImages,
-  moveFileToSentDir,
+  listTopicSubfolders,
+  moveTopicImageToSent,
   pickRandomFiles,
   resolveLocalImageDirs
 } from '@pinbale/core';
@@ -17,6 +21,7 @@ import {
 const config = getConfig();
 const logger = createLogger(config.LOG_LEVEL);
 const redis = createRedisClient(config.REDIS_URL);
+const cacheSvc = new RedisCacheService(redis);
 
 const baleClient = new BaleClient(
   config.BALE_BOT_TOKEN,
@@ -48,7 +53,7 @@ void listPendingLocalImages(dirsAtBoot.root)
   .then((list) => {
     logger.info(
       { pendingImageCount: list.length, imagesRootAbsolute: dirsAtBoot.root },
-      'worker boot: تعداد فایل تصویر در پوشهٔ اصلی (بدون sent)'
+      'worker boot: تعداد فایل تصویر در ریشهٔ images'
     );
   })
   .catch((err) => {
@@ -58,15 +63,28 @@ void listPendingLocalImages(dirsAtBoot.root)
     );
   });
 
+void listTopicSubfolders(dirsAtBoot.root)
+  .then((topics) => {
+    logger.info({ topicFolderCount: topics.length }, 'worker boot: تعداد پوشهٔ موضوعی');
+  })
+  .catch(() => undefined);
+
 new Worker<MaterialsJobPayload>(
   QUEUE_NAMES.materials,
   async (job) => {
     const { chatId, requestId, userId } = job.data;
-    logger.info({ jobId: job.id, requestId, userId, chatId }, 'processing materials job');
+    const rawTopic = job.data.sourceSubfolder;
+    const topic =
+      rawTopic && isSafeTopicFolderName(rawTopic) ? rawTopic : undefined;
+
+    logger.info(
+      { jobId: job.id, requestId, userId, chatId, topic: topic ?? '(root only)' },
+      'processing materials job'
+    );
 
     const { root, sent } = resolveLocalImageDirs(process.cwd(), config.LOCAL_IMAGES_DIR);
     logger.info(
-      { requestId, imagesRootAbsolute: root, sentDirAbsolute: sent },
+      { requestId, imagesRootAbsolute: root, sentDirAbsolute: sent, topic },
       'materials job: resolved paths'
     );
     await mkdir(root, { recursive: true });
@@ -74,7 +92,9 @@ new Worker<MaterialsJobPayload>(
 
     let pending: string[];
     try {
-      pending = await listPendingLocalImages(root);
+      pending = topic
+        ? await listPendingInTopicFolder(root, topic)
+        : await listPendingLocalImages(root);
     } catch (err) {
       logger.error({ err, requestId, root }, 'local images listing failed');
       await bale.sendText(chatId, faMessages.noLocalImages);
@@ -82,14 +102,23 @@ new Worker<MaterialsJobPayload>(
     }
 
     logger.info(
-      { requestId, pendingCount: pending.length, imagesRootAbsolute: root },
-      'materials job: after listPendingLocalImages'
+      { requestId, pendingCount: pending.length, imagesRootAbsolute: root, topic },
+      'materials job: after list'
     );
 
     const batch = pickRandomFiles(pending, config.LOCAL_IMAGES_PER_REQUEST);
     if (batch.length === 0) {
-      logger.info({ requestId }, 'materials job: pool empty, sending noLocalImages to user');
-      await bale.sendText(chatId, faMessages.noLocalImages);
+      logger.info({ requestId, topic }, 'materials job: pool empty');
+      if (topic) {
+        await bale.sendText(chatId, faMessages.noLocalImagesInTopic(topic));
+      } else {
+        await bale.sendText(chatId, faMessages.noLocalImages);
+      }
+      await cacheSvc.set(
+        CACHE_KEYS.lastMaterialsTopic(userId),
+        { sourceSubfolder: topic ?? null },
+        86_400
+      );
       return;
     }
 
@@ -98,7 +127,8 @@ new Worker<MaterialsJobPayload>(
         requestId,
         batchSize: batch.length,
         firstFile: batch[0],
-        chatId
+        chatId,
+        topic
       },
       'materials job: starting send loop'
     );
@@ -108,7 +138,7 @@ new Worker<MaterialsJobPayload>(
     for (let i = 0; i < batch.length; i++) {
       const filePath = batch[i]!;
       try {
-        const publicUrl = buildPublicImageUrl(config, filePath);
+        const publicUrl = buildPublicImageUrl(config, filePath, root, topic);
         if (publicUrl) {
           logger.info(
             { requestId, index: i + 1, of: batch.length, publicUrl },
@@ -122,7 +152,7 @@ new Worker<MaterialsJobPayload>(
           );
           await bale.sendPhotoFromFile(chatId, filePath);
         }
-        await moveFileToSentDir(filePath, sent);
+        await moveTopicImageToSent(filePath, sent, topic ?? null);
         successCount += 1;
         logger.info({ requestId, filePath }, 'materials job: photo sent and moved to sent');
       } catch (err) {
@@ -140,6 +170,12 @@ new Worker<MaterialsJobPayload>(
 
     logger.info({ requestId, successCount, anyFailed }, 'materials job: loop finished');
 
+    await cacheSvc.set(
+      CACHE_KEYS.lastMaterialsTopic(userId),
+      { sourceSubfolder: topic ?? null },
+      86_400
+    );
+
     if (anyFailed) {
       await bale.sendText(chatId, faMessages.materialsSendFailed);
     }
@@ -153,9 +189,18 @@ new Worker<MaterialsJobPayload>(
 
 logger.info('worker started (materials only)');
 
-function buildPublicImageUrl(cfg: AppConfig, filePath: string): string | null {
+function buildPublicImageUrl(
+  cfg: AppConfig,
+  filePath: string,
+  imagesRoot: string,
+  topicSubfolder: string | undefined
+): string | null {
   const base = cfg.PUBLIC_BASE_URL?.replace(/\/$/, '');
   if (!base) return null;
   const name = basename(filePath);
+  if (topicSubfolder && isSafeTopicFolderName(topicSubfolder)) {
+    const q = new URLSearchParams({ from: topicSubfolder });
+    return `${base}/media/local/${encodeURIComponent(name)}?${q.toString()}`;
+  }
   return `${base}/media/local/${encodeURIComponent(name)}`;
 }

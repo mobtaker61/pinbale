@@ -6,5 +6,9 @@ export const CACHE_KEYS = {
   userCooldown: (userId: string) => `cooldown:user:${userId}`,
   userRateMinute: (userId: string) => `rate:user:${userId}`,
   ipRateMinute: (ip: string) => `rate:ip:${ip}`,
-  idempotency: (key: string) => `idempotency:${key}`
+  idempotency: (key: string) => `idempotency:${key}`,
+  /** لیست پوشه‌های انتخاب‌شده برای /list (چند دقیقه) */
+  folderPick: (userId: string) => `folderPick:${userId}`,
+  /** آخرین موضوع ارسال مواد یا تصاویر برای دکمهٔ «دوباره» */
+  lastMaterialsTopic: (userId: string) => `materials:lastTopic:${userId}`
 } as const;

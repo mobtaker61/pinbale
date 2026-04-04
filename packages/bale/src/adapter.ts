@@ -10,6 +10,22 @@ export class BaleAdapter {
     await this.client.sendMessage({ chatId, text });
   }
 
+  async sendTextWithInlineKeyboard(
+    chatId: string,
+    text: string,
+    rows: { text: string; callbackData: string }[][]
+  ) {
+    await this.client.sendMessage({
+      chatId,
+      text,
+      replyMarkup: {
+        inline_keyboard: rows.map((row) =>
+          row.map((b) => ({ text: b.text, callback_data: b.callbackData }))
+        )
+      }
+    });
+  }
+
   async sendTextWithAgainButton(chatId: string, text: string) {
     await this.client.sendMessage({
       chatId,

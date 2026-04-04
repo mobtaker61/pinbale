@@ -7,6 +7,10 @@ describe('parseBaleTextCommand', () => {
     expect(parseBaleTextCommand('  /pin  ')).toEqual({ type: 'materials' });
   });
 
+  test('parses /list', () => {
+    expect(parseBaleTextCommand('/list')).toEqual({ type: 'listFolders' });
+  });
+
   test('parses /start with bot suffix', () => {
     expect(parseBaleTextCommand('/start@Bot')).toEqual({ type: 'start' });
   });

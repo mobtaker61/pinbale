@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
+  CALLBACK_FOLDER_PICK_PREFIX,
   CALLBACK_MATERIALS_AGAIN,
   faMessages,
   formatHelpMessage,
@@ -8,7 +9,7 @@ import {
   formatStartMessage,
   parseBaleTextCommand
 } from '@pinbale/bale';
-import { RateLimitedError } from '@pinbale/core';
+import { CACHE_KEYS, RateLimitedError, listTopicSubfolders, resolveLocalImageDirs } from '@pinbale/core';
 
 const id = z.union([z.string(), z.number()]).transform(String);
 
@@ -36,16 +37,20 @@ const BaleUpdateSchema = z.object({
     .optional()
 });
 
+const FOLDER_PICK_TTL_SEC = 600;
+const MAX_FOLDER_BUTTONS = 30;
+
 async function enqueueMaterials(
   app: FastifyInstance,
   userId: string,
   chatId: string,
-  requestId: string
+  requestId: string,
+  sourceSubfolder?: string
 ) {
   await app.container.bale.sendText(chatId, faMessages.materialsQueued);
   await app.container.queues.materialsQueue.add(
     'materials',
-    { userId, chatId, requestId },
+    { userId, chatId, requestId, sourceSubfolder },
     { removeOnComplete: true, attempts: 2, backoff: { type: 'exponential', delay: 1000 } }
   );
 }
@@ -100,9 +105,38 @@ export async function registerWebhookRoutes(app: FastifyInstance) {
         try {
           await app.container.bale.answerCallbackQuery(cb.id, faMessages.callbackAck);
         } catch {
-          /* ignore answer errors */
+          /* ignore */
         }
-        await enqueueMaterials(app, userId, chatId, request.id);
+        const last = await app.container.cache.get<{ sourceSubfolder: string | null }>(
+          CACHE_KEYS.lastMaterialsTopic(userId)
+        );
+        const sourceSubfolder =
+          typeof last?.sourceSubfolder === 'string' && last.sourceSubfolder.length > 0
+            ? last.sourceSubfolder
+            : undefined;
+        await enqueueMaterials(app, userId, chatId, request.id, sourceSubfolder);
+        return { ok: true };
+      }
+
+      if (cb.data?.startsWith(CALLBACK_FOLDER_PICK_PREFIX)) {
+        const idx = Number(cb.data.slice(CALLBACK_FOLDER_PICK_PREFIX.length));
+        if (Number.isNaN(idx) || idx < 0) {
+          await app.container.bale.answerCallbackQuery(cb.id);
+          return { ok: true, ignored: true };
+        }
+        const folders = await app.container.cache.get<string[]>(CACHE_KEYS.folderPick(userId));
+        if (!folders || idx >= folders.length) {
+          await app.container.bale.answerCallbackQuery(cb.id, faMessages.folderPickExpired);
+          await app.container.bale.sendText(chatId, faMessages.folderPickExpired);
+          return { ok: true };
+        }
+        const folderName = folders[idx]!;
+        try {
+          await app.container.bale.answerCallbackQuery(cb.id, faMessages.callbackAck);
+        } catch {
+          /* ignore */
+        }
+        await enqueueMaterials(app, userId, chatId, request.id, folderName);
         return { ok: true };
       }
 
@@ -149,6 +183,32 @@ export async function registerWebhookRoutes(app: FastifyInstance) {
     }
     if (command.type === 'help') {
       await app.container.bale.sendText(chatId, formatHelpMessage());
+      return { ok: true };
+    }
+    if (command.type === 'listFolders') {
+      const { root } = resolveLocalImageDirs(process.cwd(), app.container.config.LOCAL_IMAGES_DIR);
+      let folders: string[];
+      try {
+        folders = await listTopicSubfolders(root);
+      } catch {
+        await app.container.bale.sendText(chatId, faMessages.listFoldersEmpty);
+        return { ok: true };
+      }
+      if (folders.length === 0) {
+        await app.container.bale.sendText(chatId, faMessages.listFoldersEmpty);
+        return { ok: true };
+      }
+      const shown = folders.slice(0, MAX_FOLDER_BUTTONS);
+      await app.container.cache.set(CACHE_KEYS.folderPick(userId), folders, FOLDER_PICK_TTL_SEC);
+      const rows = shown.map((name, i) => {
+        const label = name.length > 36 ? `${name.slice(0, 34)}…` : name;
+        return [{ text: label, callbackData: `${CALLBACK_FOLDER_PICK_PREFIX}${i}` }];
+      });
+      let intro = faMessages.listFoldersIntro;
+      if (folders.length > MAX_FOLDER_BUTTONS) {
+        intro += `\n(فقط ${MAX_FOLDER_BUTTONS} مورد اول؛ برای بقیه نام پوشه را کوتاه‌تر کنید یا بعداً توسعه دهید.)`;
+      }
+      await app.container.bale.sendTextWithInlineKeyboard(chatId, intro, rows);
       return { ok: true };
     }
     if (command.type === 'materials') {
