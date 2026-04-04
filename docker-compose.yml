@@ -15,6 +15,9 @@ services:
       - redis
     ports:
       - "3000:3000"
+    # تصاویر روی هاست؛ بدون این mount کانتینر پوشهٔ خالی می‌بیند
+    volumes:
+      - ./images:/app/images
 
   worker:
     build:
@@ -24,3 +27,5 @@ services:
       - .env
     depends_on:
       - redis
+    volumes:
+      - ./images:/app/images
