@@ -28,6 +28,11 @@ export class BaleAdapter {
     await this.client.sendPhotoFromFile({ chatId, filePath, caption });
   }
 
+  /** ارسال با URL عمومی (سرور بله/تلگرام فایل را دانلود می‌کند) — پایدارتر از multipart. */
+  async sendPhotoByUrl(chatId: string, photoUrl: string, caption?: string) {
+    await this.client.sendPhoto({ chatId, photoUrl, caption });
+  }
+
   async sendResultWithOptionalPhoto(chatId: string, text: string, imageUrl?: string | null) {
     if (!imageUrl) {
       await this.sendText(chatId, text);

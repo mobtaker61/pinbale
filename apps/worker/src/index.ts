@@ -1,6 +1,8 @@
 import { mkdir } from 'node:fs/promises';
+import { basename } from 'node:path';
 import { Worker } from 'bullmq';
 import { getConfig } from '@pinbale/config';
+import type { AppConfig } from '@pinbale/config';
 import { createLogger } from '@pinbale/observability';
 import { createRedisClient } from '@pinbale/cache';
 import { QUEUE_NAMES, type MaterialsJobPayload } from '@pinbale/queue';
@@ -29,10 +31,18 @@ logger.info(
     localImagesDirEnv: config.LOCAL_IMAGES_DIR,
     imagesRootAbsolute: dirsAtBoot.root,
     sentDirAbsolute: dirsAtBoot.sent,
-    nodeEnv: process.env.NODE_ENV
+    nodeEnv: process.env.NODE_ENV,
+    publicBaseUrl: config.PUBLIC_BASE_URL ?? null,
+    sendMode: config.PUBLIC_BASE_URL ? 'sendPhoto(URL)' : 'sendPhoto(multipart-fallback)'
   },
   'worker boot: مسیرهای تصویر داخل این فرایند (کانتینر همین مسیرها را می‌بیند)'
 );
+
+if (!config.PUBLIC_BASE_URL) {
+  logger.warn(
+    'PUBLIC_BASE_URL خالی است؛ ارسال multipart ممکن است از طرف API بله قطع شود. آدرس عمومی API را در .env بگذارید (مثلاً همان URL تونل کلادفلر).'
+  );
+}
 
 void listPendingLocalImages(dirsAtBoot.root)
   .then((list) => {
@@ -90,7 +100,7 @@ new Worker<MaterialsJobPayload>(
         firstFile: batch[0],
         chatId
       },
-      'materials job: starting sendPhotoFromFile loop'
+      'materials job: starting send loop'
     );
 
     let successCount = 0;
@@ -98,11 +108,20 @@ new Worker<MaterialsJobPayload>(
     for (let i = 0; i < batch.length; i++) {
       const filePath = batch[i]!;
       try {
-        logger.info(
-          { requestId, index: i + 1, of: batch.length, filePath },
-          'materials job: calling sendPhotoFromFile'
-        );
-        await bale.sendPhotoFromFile(chatId, filePath);
+        const publicUrl = buildPublicImageUrl(config, filePath);
+        if (publicUrl) {
+          logger.info(
+            { requestId, index: i + 1, of: batch.length, publicUrl },
+            'materials job: sendPhoto by public URL (Bale downloads)'
+          );
+          await bale.sendPhotoByUrl(chatId, publicUrl);
+        } else {
+          logger.info(
+            { requestId, index: i + 1, of: batch.length, filePath },
+            'materials job: calling sendPhotoFromFile (no PUBLIC_BASE_URL)'
+          );
+          await bale.sendPhotoFromFile(chatId, filePath);
+        }
         await moveFileToSentDir(filePath, sent);
         successCount += 1;
         logger.info({ requestId, filePath }, 'materials job: photo sent and moved to sent');
@@ -133,3 +152,10 @@ new Worker<MaterialsJobPayload>(
 );
 
 logger.info('worker started (materials only)');
+
+function buildPublicImageUrl(cfg: AppConfig, filePath: string): string | null {
+  const base = cfg.PUBLIC_BASE_URL?.replace(/\/$/, '');
+  if (!base) return null;
+  const name = basename(filePath);
+  return `${base}/media/local/${encodeURIComponent(name)}`;
+}

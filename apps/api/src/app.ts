@@ -6,6 +6,7 @@ import { buildContainer } from './container.js';
 import { registerWebhookRoutes } from './routes/webhook.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerInternalRoutes } from './routes/internal.js';
+import { registerLocalMediaRoutes } from './routes/local-media.js';
 
 export async function createApp() {
   const container = buildContainer();
@@ -31,12 +32,17 @@ export async function createApp() {
   await app.register(rateLimit, {
     global: true,
     max: container.config.RATE_LIMIT_PER_IP_PER_MIN,
-    timeWindow: '1 minute'
+    timeWindow: '1 minute',
+    allowList: (req) => {
+      const pathOnly = req.url.split('?')[0] ?? '';
+      return pathOnly.startsWith('/media/local/');
+    }
   });
 
   await registerWebhookRoutes(app);
   await registerHealthRoutes(app);
   await registerInternalRoutes(app);
+  await registerLocalMediaRoutes(app);
 
   app.addHook('onClose', async () => {
     await container.redis.quit();
