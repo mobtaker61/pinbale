@@ -18,7 +18,6 @@ export type BaleUpdate = {
 export type BaleCommand =
   | { type: 'start' }
   | { type: 'help' }
-  | { type: 'next' }
-  | { type: 'page'; page: number }
   | { type: 'materials' }
-  | { type: 'search'; query: string };
+  | { type: 'legacySearchCommand' }
+  | { type: 'unknown'; text: string };

@@ -8,13 +8,9 @@ export function parseBaleTextCommand(text: string): BaleCommand {
   const trimmed = text.trim();
   if (isCommand('/start', trimmed)) return { type: 'start' };
   if (isCommand('/help', trimmed)) return { type: 'help' };
-  if (isCommand('/next', trimmed)) return { type: 'next' };
-  if (isCommand('/مواد', trimmed)) return { type: 'materials' };
-  if (trimmed.startsWith('/page ')) {
-    const page = Number(trimmed.replace('/page', '').trim());
-    if (!Number.isNaN(page) && page > 0) {
-      return { type: 'page', page };
-    }
+  if (isCommand('/مواد', trimmed) || isCommand('/pin', trimmed)) return { type: 'materials' };
+  if (isCommand('/next', trimmed) || trimmed.startsWith('/page')) {
+    return { type: 'legacySearchCommand' };
   }
-  return { type: 'search', query: trimmed };
+  return { type: 'unknown', text: trimmed };
 }

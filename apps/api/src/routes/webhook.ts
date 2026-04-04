@@ -1,28 +1,54 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
+  CALLBACK_MATERIALS_AGAIN,
   faMessages,
   formatHelpMessage,
-  formatInvalidInput,
-  formatProviderFailure,
   formatRateLimited,
-  formatSearchingMessage,
   formatStartMessage,
   parseBaleTextCommand
 } from '@pinbale/bale';
-import { CACHE_KEYS, RateLimitedError, ValidationError, validateQuery } from '@pinbale/core';
+import { RateLimitedError } from '@pinbale/core';
+
+const id = z.union([z.string(), z.number()]).transform(String);
 
 const BaleUpdateSchema = z.object({
-  update_id: z.union([z.string(), z.number()]).transform(String),
+  update_id: id,
   message: z
     .object({
-      message_id: z.union([z.string(), z.number()]).transform(String),
+      message_id: id,
       text: z.string().optional(),
-      from: z.object({ id: z.union([z.string(), z.number()]).transform(String) }).optional(),
-      chat: z.object({ id: z.union([z.string(), z.number()]).transform(String) }).optional()
+      from: z.object({ id }).optional(),
+      chat: z.object({ id }).optional()
+    })
+    .optional(),
+  callback_query: z
+    .object({
+      id: z.string(),
+      data: z.string().optional(),
+      from: z.object({ id }),
+      message: z
+        .object({
+          chat: z.object({ id })
+        })
+        .optional()
     })
     .optional()
 });
+
+async function enqueueMaterials(
+  app: FastifyInstance,
+  userId: string,
+  chatId: string,
+  requestId: string
+) {
+  await app.container.bale.sendText(chatId, faMessages.materialsQueued);
+  await app.container.queues.materialsQueue.add(
+    'materials',
+    { userId, chatId, requestId },
+    { removeOnComplete: true, attempts: 2, backoff: { type: 'exponential', delay: 1000 } }
+  );
+}
 
 export async function registerWebhookRoutes(app: FastifyInstance) {
   app.post('/webhooks/bale', async (request, reply) => {
@@ -34,6 +60,56 @@ export async function registerWebhookRoutes(app: FastifyInstance) {
     }
 
     const update = BaleUpdateSchema.parse(request.body);
+
+    const cb = update.callback_query;
+    if (cb) {
+      const chatId = cb.message?.chat?.id;
+      const userId = cb.from.id;
+      if (!chatId) {
+        return { ok: true, ignored: true };
+      }
+
+      try {
+        await app.container.rateLimitService.checkUser(
+          userId,
+          app.container.config.RATE_LIMIT_PER_USER_PER_MIN
+        );
+        await app.container.rateLimitService.checkIp(
+          request.ip,
+          app.container.config.RATE_LIMIT_PER_IP_PER_MIN
+        );
+      } catch (error) {
+        if (error instanceof RateLimitedError) {
+          await app.container.bale.answerCallbackQuery(cb.id, faMessages.rateLimited);
+          await app.container.bale.sendText(chatId, formatRateLimited());
+          return { ok: true, limited: true };
+        }
+        throw error;
+      }
+
+      if (
+        app.container.config.allowlistUserIds.length > 0 &&
+        !app.container.config.allowlistUserIds.includes(userId)
+      ) {
+        await app.container.bale.answerCallbackQuery(cb.id);
+        await app.container.bale.sendText(chatId, faMessages.notAllowlisted);
+        return { ok: true };
+      }
+
+      if (cb.data === CALLBACK_MATERIALS_AGAIN) {
+        try {
+          await app.container.bale.answerCallbackQuery(cb.id, faMessages.callbackAck);
+        } catch {
+          /* ignore answer errors */
+        }
+        await enqueueMaterials(app, userId, chatId, request.id);
+        return { ok: true };
+      }
+
+      await app.container.bale.answerCallbackQuery(cb.id);
+      return { ok: true, ignored: true };
+    }
+
     const message = update.message;
     if (!message?.text || !message.chat?.id || !message.from?.id) {
       return { ok: true, ignored: true };
@@ -76,76 +152,15 @@ export async function registerWebhookRoutes(app: FastifyInstance) {
       return { ok: true };
     }
     if (command.type === 'materials') {
-      await app.container.bale.sendText(chatId, faMessages.materialsQueued);
-      await app.container.queues.materialsQueue.add(
-        'materials',
-        { userId, chatId, requestId: request.id },
-        { removeOnComplete: true, attempts: 2, backoff: { type: 'exponential', delay: 1000 } }
-      );
+      await enqueueMaterials(app, userId, chatId, request.id);
+      return { ok: true };
+    }
+    if (command.type === 'legacySearchCommand') {
+      await app.container.bale.sendText(chatId, faMessages.searchDisabled);
       return { ok: true };
     }
 
-    const session = (await app.container.sessionService.get(userId)) ?? {
-      userId,
-      lastQuery: '',
-      normalizedQuery: '',
-      currentOffset: 0,
-      currentPage: 1,
-      recentResultIds: []
-    };
-
-    try {
-      let query = session.lastQuery;
-      let page = session.currentPage;
-      if (command.type === 'search') {
-        query = validateQuery(command.query, 120, app.container.config.bannedKeywords);
-        const repeatedQuery = session.lastQuery === query;
-        if (repeatedQuery) {
-          const cooldownSet = await app.container.redis.set(
-            CACHE_KEYS.userCooldown(userId),
-            String(Date.now()),
-            'EX',
-            10,
-            'NX'
-          );
-          if (cooldownSet === null) {
-            throw new RateLimitedError();
-          }
-        }
-        page = 1;
-      } else if (command.type === 'next') {
-        page += 1;
-      } else if (command.type === 'page') {
-        page = command.page;
-      }
-
-      await app.container.bale.sendText(chatId, formatSearchingMessage());
-      // Important: webhook must respond fast; heavy work runs asynchronously in worker.
-      await app.container.queues.searchQueue.add(
-        'search',
-        { userId, chatId, query, page, requestId: request.id },
-        { removeOnComplete: true, attempts: 2, backoff: { type: 'exponential', delay: 1000 } }
-      );
-
-      await app.container.sessionService.set({
-        userId,
-        lastQuery: query,
-        normalizedQuery: query,
-        currentOffset: (page - 1) * app.container.config.SEARCH_RESULTS_PER_PAGE,
-        currentPage: page,
-        recentResultIds: session.recentResultIds
-      });
-      return { ok: true };
-    } catch (error) {
-      app.log.error({ err: error, requestId: request.id }, 'bale webhook search failed');
-      if (error instanceof RateLimitedError) {
-        await app.container.bale.sendText(chatId, formatRateLimited());
-      } else if (error instanceof ValidationError) {
-        await app.container.bale.sendText(chatId, formatInvalidInput());
-      } else {
-        await app.container.bale.sendText(chatId, formatProviderFailure());
-      }
-      return { ok: true, degraded: true };
-    }
+    await app.container.bale.sendText(chatId, faMessages.useCommandsHint);
+    return { ok: true };
   });
 }

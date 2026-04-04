@@ -3,9 +3,12 @@ import { basename } from 'node:path';
 import { request } from 'undici';
 import { BaleDeliveryError } from '@pinbale/core';
 
+type InlineKeyboardButton = { text: string; callback_data: string };
+
 type SendMessageParams = {
   chatId: string;
   text: string;
+  replyMarkup?: { inline_keyboard: InlineKeyboardButton[][] };
 };
 
 type SendPhotoParams = {
@@ -33,14 +36,41 @@ export class BaleClient {
 
   async sendMessage(params: SendMessageParams): Promise<void> {
     await this.withRetry(async () => {
+      const body: Record<string, unknown> = { chat_id: params.chatId, text: params.text };
+      if (params.replyMarkup) {
+        body.reply_markup = params.replyMarkup;
+      }
       const { statusCode } = await request(`${this.endpoint}/sendMessage`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ chat_id: params.chatId, text: params.text }),
+        body: JSON.stringify(body),
         headersTimeout: this.timeoutMs,
         bodyTimeout: this.timeoutMs
       });
       if (statusCode >= 400) throw new BaleDeliveryError(`sendMessage failed with ${statusCode}`);
+    });
+  }
+
+  async answerCallbackQuery(params: {
+    callbackQueryId: string;
+    text?: string;
+    showAlert?: boolean;
+  }): Promise<void> {
+    await this.withRetry(async () => {
+      const { statusCode } = await request(`${this.endpoint}/answerCallbackQuery`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          callback_query_id: params.callbackQueryId,
+          text: params.text,
+          show_alert: params.showAlert ?? false
+        }),
+        headersTimeout: this.timeoutMs,
+        bodyTimeout: this.timeoutMs
+      });
+      if (statusCode >= 400) {
+        throw new BaleDeliveryError(`answerCallbackQuery failed with ${statusCode}`);
+      }
     });
   }
 

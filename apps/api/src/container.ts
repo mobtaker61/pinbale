@@ -3,15 +3,6 @@ import { createLogger } from '@pinbale/observability';
 import { createRedisClient, RateLimitService, RedisCacheService, SessionService } from '@pinbale/cache';
 import { createQueues } from '@pinbale/queue';
 import { BaleAdapter, BaleClient } from '@pinbale/bale';
-import {
-  BrowserManager,
-  CachedFallbackProvider,
-  OfficialApiPinterestProvider,
-  PlaywrightPinterestProvider
-} from '@pinbale/providers';
-import * as Providers from '@pinbale/providers';
-import type { PinterestSearchProvider } from '@pinbale/core';
-import { SearchService } from './services/search-service.js';
 
 export function buildContainer() {
   const config = getConfig();
@@ -31,62 +22,6 @@ export function buildContainer() {
   );
   const bale = new BaleAdapter(baleClient);
 
-  const officialProvider = new OfficialApiPinterestProvider({
-    baseUrl: config.PINTEREST_API_BASE_URL,
-    accessToken: config.PINTEREST_ACCESS_TOKEN,
-    timeoutMs: 12000
-  });
-  const browserManager = new BrowserManager({
-    headless: config.PLAYWRIGHT_HEADLESS,
-    navTimeoutMs: config.PLAYWRIGHT_NAV_TIMEOUT_MS,
-    actionTimeoutMs: config.PLAYWRIGHT_ACTION_TIMEOUT_MS,
-    maxContexts: config.PLAYWRIGHT_MAX_CONTEXTS,
-    userAgent: config.PLAYWRIGHT_USER_AGENT,
-    artifactsDir: 'playwright-artifacts',
-    proxy: config.PLAYWRIGHT_PROXY_SERVER
-      ? {
-          server: config.PLAYWRIGHT_PROXY_SERVER,
-          username: config.PLAYWRIGHT_PROXY_USERNAME,
-          password: config.PLAYWRIGHT_PROXY_PASSWORD
-        }
-      : undefined
-  });
-  const playwrightProvider = new PlaywrightPinterestProvider(browserManager, {
-    headless: config.PLAYWRIGHT_HEADLESS,
-    navTimeoutMs: config.PLAYWRIGHT_NAV_TIMEOUT_MS,
-    actionTimeoutMs: config.PLAYWRIGHT_ACTION_TIMEOUT_MS,
-    maxContexts: config.PLAYWRIGHT_MAX_CONTEXTS,
-    userAgent: config.PLAYWRIGHT_USER_AGENT,
-    artifactsDir: 'playwright-artifacts',
-    proxy: config.PLAYWRIGHT_PROXY_SERVER
-      ? {
-          server: config.PLAYWRIGHT_PROXY_SERVER,
-          username: config.PLAYWRIGHT_PROXY_USERNAME,
-          password: config.PLAYWRIGHT_PROXY_PASSWORD
-        }
-      : undefined
-  });
-  const cacheProvider = new CachedFallbackProvider(cache);
-  const mynoProvider = new (
-    Providers as unknown as {
-      MynoScraperPinterestProvider: new () => PinterestSearchProvider;
-    }
-  ).MynoScraperPinterestProvider();
-
-  const providerChain = resolveProviderChain(
-    config.PINTEREST_PROVIDER_MODE,
-    officialProvider,
-    mynoProvider,
-    playwrightProvider,
-    cacheProvider
-  );
-  const searchService = new SearchService({
-    providers: providerChain,
-    cache,
-    config,
-    logger
-  });
-
   return {
     config,
     logger,
@@ -95,21 +30,6 @@ export function buildContainer() {
     sessionService,
     rateLimitService,
     queues,
-    bale,
-    browserManager,
-    providers: { officialProvider, mynoProvider, playwrightProvider, cacheProvider },
-    searchService
+    bale
   };
-}
-
-function resolveProviderChain(
-  mode: 'official' | 'playwright' | 'hybrid',
-  official: PinterestSearchProvider,
-  myno: PinterestSearchProvider,
-  playwright: PinterestSearchProvider,
-  cache: PinterestSearchProvider
-): PinterestSearchProvider[] {
-  if (mode === 'official') return [official, myno, cache];
-  if (mode === 'playwright') return [myno, playwright, cache];
-  return [official, myno, playwright, cache];
 }

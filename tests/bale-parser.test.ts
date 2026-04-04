@@ -14,4 +14,18 @@ describe('parseBaleTextCommand', () => {
   test('parses /start with bot suffix', () => {
     expect(parseBaleTextCommand('/start@Bot')).toEqual({ type: 'start' });
   });
+
+  test('parses /pin like /مواد', () => {
+    expect(parseBaleTextCommand('/pin')).toEqual({ type: 'materials' });
+    expect(parseBaleTextCommand('/pin@Bot')).toEqual({ type: 'materials' });
+  });
+
+  test('plain text is unknown', () => {
+    expect(parseBaleTextCommand('گربه')).toEqual({ type: 'unknown', text: 'گربه' });
+  });
+
+  test('old search commands are legacy', () => {
+    expect(parseBaleTextCommand('/next')).toEqual({ type: 'legacySearchCommand' });
+    expect(parseBaleTextCommand('/page 2')).toEqual({ type: 'legacySearchCommand' });
+  });
 });

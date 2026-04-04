@@ -1,8 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import { CACHE_KEYS } from '@pinbale/core';
 
 export async function registerHealthRoutes(app: FastifyInstance) {
-  app.get('/health/live', async () => ({ ok: true, service: 'pinbale-api' }));
+  app.get('/health/live', async () => ({ ok: true, service: 'pinbale-api', mode: 'local-images' }));
 
   app.get('/health/ready', async (_, reply) => {
     try {
@@ -14,19 +13,8 @@ export async function registerHealthRoutes(app: FastifyInstance) {
     }
   });
 
-  app.get('/health/providers', async () => {
-    const providers = app.container.providers;
-    const health = await Promise.all([
-      providers.officialProvider.healthCheck(),
-      providers.mynoProvider.healthCheck(),
-      providers.playwrightProvider.healthCheck(),
-      providers.cacheProvider.healthCheck()
-    ]);
-    await Promise.all(
-      health.map((h: { provider: string }) =>
-        app.container.cache.set(CACHE_KEYS.providerHealth(h.provider), h, app.container.config.SEARCH_CACHE_TTL_SEC)
-      )
-    );
-    return { providers: health };
-  });
+  app.get('/health/providers', async () => ({
+    ok: true,
+    message: 'جستجوی پینترست غیرفعال است؛ فقط ارسال تصاویر محلی از پوشهٔ images.'
+  }));
 }
