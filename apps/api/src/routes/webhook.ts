@@ -75,6 +75,15 @@ export async function registerWebhookRoutes(app: FastifyInstance) {
       await app.container.bale.sendText(chatId, formatHelpMessage());
       return { ok: true };
     }
+    if (command.type === 'materials') {
+      await app.container.bale.sendText(chatId, faMessages.materialsQueued);
+      await app.container.queues.materialsQueue.add(
+        'materials',
+        { userId, chatId, requestId: request.id },
+        { removeOnComplete: true, attempts: 2, backoff: { type: 'exponential', delay: 1000 } }
+      );
+      return { ok: true };
+    }
 
     const session = (await app.container.sessionService.get(userId)) ?? {
       userId,

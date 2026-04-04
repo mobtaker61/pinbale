@@ -42,7 +42,11 @@ const EnvSchema = z.object({
 
   ADMIN_TOKEN: z.string().min(1),
   ALLOWLIST_USER_IDS: z.string().optional(),
-  BANNED_KEYWORDS: z.string().optional()
+  BANNED_KEYWORDS: z.string().optional(),
+
+  /** مسیر نسبت به cwd سرویس (مثلاً ریشهٔ monorepo یا /app در داکر) */
+  LOCAL_IMAGES_DIR: z.string().default('images'),
+  LOCAL_IMAGES_PER_REQUEST: z.coerce.number().min(1).max(50).default(10)
 });
 
 export type AppConfig = z.infer<typeof EnvSchema> & {

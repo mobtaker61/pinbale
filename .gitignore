@@ -6,3 +6,10 @@ dist
 coverage
 playwright-artifacts
 *.log
+
+# تصاویر محلی ربات (آپلود دستی؛ در ریپو نمی‌رود)
+images/*
+!images/.gitkeep
+!images/sent/
+images/sent/*
+!images/sent/.gitkeep

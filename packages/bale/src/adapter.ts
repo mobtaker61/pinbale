@@ -8,6 +8,10 @@ export class BaleAdapter {
     await this.client.sendMessage({ chatId, text });
   }
 
+  async sendPhotoFromFile(chatId: string, filePath: string, caption?: string) {
+    await this.client.sendPhotoFromFile({ chatId, filePath, caption });
+  }
+
   async sendResultWithOptionalPhoto(chatId: string, text: string, imageUrl?: string | null) {
     if (!imageUrl) {
       await this.sendText(chatId, text);

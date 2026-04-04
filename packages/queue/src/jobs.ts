@@ -6,6 +6,12 @@ export type SearchJobPayload = {
   requestId: string;
 };
 
+export type MaterialsJobPayload = {
+  userId: string;
+  chatId: string;
+  requestId: string;
+};
+
 export type ScreenshotArchivePayload = {
   path: string;
   provider: string;

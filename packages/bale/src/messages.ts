@@ -6,6 +6,7 @@ export const faMessages = {
     '- متن عادی: جستجو',
     '- /next : صفحه بعد',
     '- /page N : رفتن به صفحه خاص',
+    '- /مواد : ارسال تصادفی چند تصویر از آرشیو محلی',
     '- /help : نمایش راهنما'
   ],
   providerFailure: 'فعلاً دسترسی به منبع جستجو دچار مشکل شده. چند دقیقه دیگر دوباره تلاش کنید.',
@@ -22,5 +23,9 @@ export const faMessages = {
   nextHint: 'برای دیدن نتایج بعدی /next را بزنید.',
   noResults: (query: string) => `برای "${query}" نتیجه‌ای پیدا نشد.`,
   webhookUnauthorized: 'دسترسی وبهوک غیرمجاز است.',
-  internalUnauthorized: 'دسترسی غیرمجاز است.'
+  internalUnauthorized: 'دسترسی غیرمجاز است.',
+  materialsQueued: 'درخواست شما ثبت شد؛ تصاویر به‌زودی ارسال می‌شوند.',
+  noLocalImages:
+    'تصویری در پوشهٔ محلی برای ارسال نیست. لطفاً در پوشهٔ images (ریشهٔ پروژه) فایل بگذارید.',
+  materialsSendFailed: 'ارسال بخشی از تصاویر ناموفق بود. دوباره تلاش کنید.'
 } as const;

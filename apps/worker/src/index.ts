@@ -1,10 +1,12 @@
 import 'dotenv/config';
+import { mkdir } from 'node:fs/promises';
 import { Worker } from 'bullmq';
 import { getConfig } from '@pinbale/config';
 import { createLogger } from '@pinbale/observability';
 import { createRedisClient, RedisCacheService, SessionService } from '@pinbale/cache';
 import {
   QUEUE_NAMES,
+  type MaterialsJobPayload,
   type ProviderHealthPayload,
   type ProviderWarmupPayload,
   type ScreenshotArchivePayload,
@@ -13,6 +15,7 @@ import {
 import {
   BaleAdapter,
   BaleClient,
+  faMessages,
   formatNoResults,
   formatProviderFailure,
   formatResultPage
@@ -20,7 +23,11 @@ import {
 import {
   CACHE_KEYS,
   InternalSearchError,
+  listPendingLocalImages,
+  moveFileToSentDir,
   paginate,
+  pickRandomFiles,
+  resolveLocalImageDirs,
   validateQuery,
   type SearchResultPage
 } from '@pinbale/core';
@@ -115,6 +122,46 @@ new Worker<SearchJobPayload & { chatId: string }>(
     }
   },
   { connection: redis, concurrency: 8 }
+);
+
+new Worker<MaterialsJobPayload>(
+  QUEUE_NAMES.materials,
+  async (job) => {
+    const { chatId, requestId } = job.data;
+    const { root, sent } = resolveLocalImageDirs(process.cwd(), config.LOCAL_IMAGES_DIR);
+    await mkdir(root, { recursive: true });
+    await mkdir(sent, { recursive: true });
+
+    let pending: string[];
+    try {
+      pending = await listPendingLocalImages(root);
+    } catch (err) {
+      logger.error({ err, requestId, root }, 'local images listing failed');
+      await bale.sendText(chatId, faMessages.noLocalImages);
+      return;
+    }
+
+    const batch = pickRandomFiles(pending, config.LOCAL_IMAGES_PER_REQUEST);
+    if (batch.length === 0) {
+      await bale.sendText(chatId, faMessages.noLocalImages);
+      return;
+    }
+
+    let anyFailed = false;
+    for (const filePath of batch) {
+      try {
+        await bale.sendPhotoFromFile(chatId, filePath);
+        await moveFileToSentDir(filePath, sent);
+      } catch (err) {
+        anyFailed = true;
+        logger.error({ err, filePath, requestId }, 'materials: send or move failed');
+      }
+    }
+    if (anyFailed) {
+      await bale.sendText(chatId, faMessages.materialsSendFailed);
+    }
+  },
+  { connection: redis, concurrency: 1 }
 );
 
 new Worker<ProviderWarmupPayload>(

@@ -20,4 +20,5 @@ export type BaleCommand =
   | { type: 'help' }
   | { type: 'next' }
   | { type: 'page'; page: number }
+  | { type: 'materials' }
   | { type: 'search'; query: string };

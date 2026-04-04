@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import { basename } from 'node:path';
 import { request } from 'undici';
 import { BaleDeliveryError } from '@pinbale/core';
 
@@ -9,6 +11,12 @@ type SendMessageParams = {
 type SendPhotoParams = {
   chatId: string;
   photoUrl: string;
+  caption?: string;
+};
+
+type SendPhotoFileParams = {
+  chatId: string;
+  filePath: string;
   caption?: string;
 };
 
@@ -50,6 +58,30 @@ export class BaleClient {
         bodyTimeout: this.timeoutMs
       });
       if (statusCode >= 400) throw new BaleDeliveryError(`sendPhoto failed with ${statusCode}`);
+    });
+  }
+
+  /** ارسال عکس به‌صورت multipart (مثل API تلگرام/بله). */
+  async sendPhotoFromFile(params: SendPhotoFileParams): Promise<void> {
+    const buf = await readFile(params.filePath);
+    const filename = basename(params.filePath);
+    const form = new FormData();
+    form.append('chat_id', params.chatId);
+    form.append('photo', new Blob([buf]), filename);
+    if (params.caption) form.append('caption', params.caption);
+
+    const uploadTimeout = Math.max(this.timeoutMs, 90_000);
+
+    await this.withRetry(async () => {
+      const { statusCode } = await request(`${this.endpoint}/sendPhoto`, {
+        method: 'POST',
+        body: form,
+        headersTimeout: uploadTimeout,
+        bodyTimeout: uploadTimeout
+      });
+      if (statusCode >= 400) {
+        throw new BaleDeliveryError(`sendPhotoFromFile failed with ${statusCode}`);
+      }
     });
   }
 
