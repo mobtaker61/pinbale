@@ -10,5 +10,8 @@ export const CACHE_KEYS = {
   /** لیست پوشه‌های انتخاب‌شده برای /list (چند دقیقه) */
   folderPick: (userId: string) => `folderPick:${userId}`,
   /** آخرین موضوع ارسال مواد یا تصاویر برای دکمهٔ «دوباره» */
-  lastMaterialsTopic: (userId: string) => `materials:lastTopic:${userId}`
+  lastMaterialsTopic: (userId: string) => `materials:lastTopic:${userId}`,
+  /** آخرین شمارهٔ تصویر ارسال‌شده به این کاربر در این موضوع (نام فایل عددی مثل 00042.jpg) */
+  materialsSequentialCursor: (userId: string, topic: string) =>
+    `materials:seq:${userId}:${topic.replaceAll(':', '_')}`
 } as const;

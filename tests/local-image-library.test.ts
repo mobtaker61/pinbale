@@ -3,9 +3,11 @@ import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
+  listNumberedImagesInTopicSorted,
   listPendingInTopicFolder,
   listPendingLocalImages,
   listTopicSubfolders,
+  parseNumberedImageBasename,
   pickRandomFiles,
   resolveLocalImageDirs
 } from '@pinbale/core';
@@ -51,5 +53,23 @@ describe('local-image-library', () => {
     const files = await listPendingInTopicFolder(base, 'dogs');
     expect(files).toHaveLength(1);
     expect(files[0]!.replace(/\\/g, '/')).toMatch(/d\.jpg$/);
+  });
+
+  test('parseNumberedImageBasename', () => {
+    expect(parseNumberedImageBasename('00012.webp')).toEqual({ num: 12, ext: '.webp' });
+    expect(parseNumberedImageBasename('1.JPEG')).toEqual({ num: 1, ext: '.jpeg' });
+    expect(parseNumberedImageBasename('abc.jpg')).toBeNull();
+    expect(parseNumberedImageBasename('12.txt')).toBeNull();
+    expect(parseNumberedImageBasename('0.png')).toBeNull();
+  });
+
+  test('listNumberedImagesInTopicSorted orders by number', async () => {
+    const base = await mkdtemp(join(tmpdir(), 'pinbale-num-sort-'));
+    await mkdir(join(base, 't'), { recursive: true });
+    await writeFile(join(base, 't', '00003.png'), Buffer.from('3'));
+    await writeFile(join(base, 't', '00001.png'), Buffer.from('1'));
+    await writeFile(join(base, 't', 'x.jpg'), Buffer.from('x'));
+    const sorted = await listNumberedImagesInTopicSorted(base, 't');
+    expect(sorted.map((x) => x.num)).toEqual([1, 3]);
   });
 });

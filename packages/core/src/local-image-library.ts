@@ -70,6 +70,46 @@ export async function listPendingLocalImages(rootDir: string): Promise<string[]>
   return files;
 }
 
+/**
+ * نام فایل باید فقط ارقام + پسوند تصویر باشد (مثلاً 00012.webp).
+ * برای ترتیب ارسال و کرسر Redis استفاده می‌شود.
+ */
+export function parseNumberedImageBasename(filename: string): { num: number; ext: string } | null {
+  const extRaw = path.extname(filename);
+  const ext = extRaw.toLowerCase();
+  if (!IMAGE_EXT.has(ext)) return null;
+  const base = path.basename(filename, extRaw);
+  if (!/^\d+$/.test(base)) return null;
+  const num = parseInt(base, 10);
+  if (!Number.isFinite(num) || num < 1) return null;
+  return { num, ext };
+}
+
+/** فقط تصاویر با نام عددی، مرتب‌شده از کوچک به بزرگ. */
+export async function listNumberedImagesInTopicSorted(
+  rootDir: string,
+  topic: string
+): Promise<{ path: string; num: number }[]> {
+  const paths = await listPendingInTopicFolder(rootDir, topic);
+  const out: { path: string; num: number }[] = [];
+  for (const p of paths) {
+    const parsed = parseNumberedImageBasename(path.basename(p));
+    if (!parsed) continue;
+    out.push({ path: p, num: parsed.num });
+  }
+  out.sort((a, b) => a.num - b.num);
+  return out;
+}
+
+/** تعداد تصاویر با نام عددی در موضوع (برای دکمهٔ /list). */
+export async function countNumberedImagesInTopic(
+  rootDir: string,
+  topic: string
+): Promise<number> {
+  const list = await listNumberedImagesInTopicSorted(rootDir, topic);
+  return list.length;
+}
+
 export function pickRandomFiles(paths: string[], count: number): string[] {
   if (paths.length === 0) return [];
   const shuffled = [...paths];

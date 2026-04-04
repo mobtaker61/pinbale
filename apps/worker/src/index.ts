@@ -10,6 +10,7 @@ import { BaleAdapter, BaleClient, faMessages } from '@pinbale/bale';
 import {
   CACHE_KEYS,
   isSafeTopicFolderName,
+  listNumberedImagesInTopicSorted,
   listPendingInTopicFolder,
   listPendingLocalImages,
   listTopicSubfolders,
@@ -90,23 +91,63 @@ new Worker<MaterialsJobPayload>(
     await mkdir(root, { recursive: true });
     await mkdir(sent, { recursive: true });
 
-    let pending: string[];
+    let batch: string[] = [];
+    /** برای موضوع: شمارهٔ هر فایل در batch؛ ریشه: null و بعد از ارسال به sent منتقل می‌شود */
+    let topicPathToNum: Map<string, number> | null = null;
+    let cursorKey = '';
+    let cursorFloor = 0;
+    let sequenceWrapped = false;
+
     try {
-      pending = topic
-        ? await listPendingInTopicFolder(root, topic)
-        : await listPendingLocalImages(root);
+      if (topic) {
+        const sorted = await listNumberedImagesInTopicSorted(root, topic);
+        const anyInTopic = await listPendingInTopicFolder(root, topic);
+        if (sorted.length === 0) {
+          logger.info({ requestId, topic }, 'materials job: no numbered images in topic');
+          if (anyInTopic.length > 0) {
+            await bale.sendText(chatId, faMessages.noNumberedImagesInTopic(topic));
+          } else {
+            await bale.sendText(chatId, faMessages.noLocalImagesInTopic(topic));
+          }
+          await cacheSvc.set(
+            CACHE_KEYS.lastMaterialsTopic(userId),
+            { sourceSubfolder: topic },
+            86_400
+          );
+          return;
+        }
+
+        cursorKey = CACHE_KEYS.materialsSequentialCursor(userId, topic);
+        const rawLast = await redis.get(cursorKey);
+        let lastNumFromRedis = rawLast ? parseInt(rawLast, 10) : 0;
+        if (!Number.isFinite(lastNumFromRedis) || lastNumFromRedis < 0) {
+          lastNumFromRedis = 0;
+        }
+
+        let candidates = sorted.filter((x) => x.num > lastNumFromRedis);
+        if (candidates.length === 0) {
+          sequenceWrapped = true;
+          candidates = sorted;
+        }
+
+        const batchMeta = candidates.slice(0, config.LOCAL_IMAGES_PER_REQUEST);
+        topicPathToNum = new Map(batchMeta.map((x) => [x.path, x.num]));
+        batch = batchMeta.map((x) => x.path);
+        cursorFloor = sequenceWrapped ? 0 : lastNumFromRedis;
+      } else {
+        const pending = await listPendingLocalImages(root);
+        logger.info(
+          { requestId, pendingCount: pending.length, imagesRootAbsolute: root, topic },
+          'materials job: after list (root)'
+        );
+        batch = pickRandomFiles(pending, config.LOCAL_IMAGES_PER_REQUEST);
+      }
     } catch (err) {
       logger.error({ err, requestId, root }, 'local images listing failed');
       await bale.sendText(chatId, faMessages.noLocalImages);
       return;
     }
 
-    logger.info(
-      { requestId, pendingCount: pending.length, imagesRootAbsolute: root, topic },
-      'materials job: after list'
-    );
-
-    const batch = pickRandomFiles(pending, config.LOCAL_IMAGES_PER_REQUEST);
     if (batch.length === 0) {
       logger.info({ requestId, topic }, 'materials job: pool empty');
       if (topic) {
@@ -128,13 +169,16 @@ new Worker<MaterialsJobPayload>(
         batchSize: batch.length,
         firstFile: batch[0],
         chatId,
-        topic
+        topic,
+        sequential: Boolean(topicPathToNum)
       },
       'materials job: starting send loop'
     );
 
     let successCount = 0;
     let anyFailed = false;
+    let cursorAfter = cursorFloor;
+
     for (let i = 0; i < batch.length; i++) {
       const filePath = batch[i]!;
       try {
@@ -152,9 +196,17 @@ new Worker<MaterialsJobPayload>(
           );
           await bale.sendPhotoFromFile(chatId, filePath);
         }
-        await moveTopicImageToSent(filePath, sent, topic ?? null);
+        if (topicPathToNum) {
+          const n = topicPathToNum.get(filePath);
+          if (n !== undefined) {
+            cursorAfter = Math.max(cursorAfter, n);
+          }
+          logger.info({ requestId, filePath }, 'materials job: photo sent (topic, file stays in folder)');
+        } else {
+          await moveTopicImageToSent(filePath, sent, null);
+          logger.info({ requestId, filePath }, 'materials job: photo sent and moved to sent');
+        }
         successCount += 1;
-        logger.info({ requestId, filePath }, 'materials job: photo sent and moved to sent');
       } catch (err) {
         anyFailed = true;
         logger.error(
@@ -166,6 +218,10 @@ new Worker<MaterialsJobPayload>(
           'materials: send or move failed'
         );
       }
+    }
+
+    if (topic && topicPathToNum) {
+      await redis.set(cursorKey, String(cursorAfter));
     }
 
     logger.info({ requestId, successCount, anyFailed }, 'materials job: loop finished');
@@ -181,6 +237,9 @@ new Worker<MaterialsJobPayload>(
     }
 
     if (successCount > 0) {
+      if (sequenceWrapped) {
+        await bale.sendText(chatId, faMessages.materialsSequenceWrapped);
+      }
       await bale.sendMaterialsBatchDoneKeyboard(chatId, faMessages.materialsBatchDone);
     }
   },

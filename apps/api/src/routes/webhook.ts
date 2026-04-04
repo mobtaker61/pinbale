@@ -13,7 +13,7 @@ import {
 import {
   CACHE_KEYS,
   RateLimitedError,
-  listPendingInTopicFolder,
+  countNumberedImagesInTopic,
   listTopicSubfolders,
   resolveLocalImageDirs
 } from '@pinbale/core';
@@ -92,11 +92,7 @@ async function sendFolderPicker(app: FastifyInstance, chatId: string, userId: st
   await app.container.cache.set(CACHE_KEYS.folderPick(userId), folders, FOLDER_PICK_TTL_SEC);
 
   const counts = await Promise.all(
-    shown.map((name) =>
-      listPendingInTopicFolder(root, name)
-        .then((files) => files.length)
-        .catch(() => 0)
-    )
+    shown.map((name) => countNumberedImagesInTopic(root, name).catch(() => 0))
   );
 
   const rows = shown.map((name, i) => {
