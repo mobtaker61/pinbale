@@ -10,7 +10,13 @@ import {
   formatStartMessage,
   parseBaleTextCommand
 } from '@pinbale/bale';
-import { CACHE_KEYS, RateLimitedError, listTopicSubfolders, resolveLocalImageDirs } from '@pinbale/core';
+import {
+  CACHE_KEYS,
+  RateLimitedError,
+  listPendingInTopicFolder,
+  listTopicSubfolders,
+  resolveLocalImageDirs
+} from '@pinbale/core';
 
 const id = z.union([z.string(), z.number()]).transform(String);
 
@@ -40,6 +46,19 @@ const BaleUpdateSchema = z.object({
 
 const FOLDER_PICK_TTL_SEC = 600;
 const MAX_FOLDER_BUTTONS = 30;
+/** محدودیت تقریبی طول متن دکمهٔ inline در بله/تلگرام */
+const MAX_FOLDER_BUTTON_LABEL_CHARS = 58;
+
+function folderButtonLabel(folderName: string, imageCount: number): string {
+  const suffix = ` (${imageCount})`;
+  if (folderName.length + suffix.length <= MAX_FOLDER_BUTTON_LABEL_CHARS) {
+    return `${folderName}${suffix}`;
+  }
+  const reserve = suffix.length + 1;
+  const maxName = MAX_FOLDER_BUTTON_LABEL_CHARS - reserve;
+  const trimmed = folderName.slice(0, Math.max(1, maxName));
+  return `${trimmed}…${suffix}`;
+}
 
 async function enqueueMaterials(
   app: FastifyInstance,
@@ -71,8 +90,17 @@ async function sendFolderPicker(app: FastifyInstance, chatId: string, userId: st
   }
   const shown = folders.slice(0, MAX_FOLDER_BUTTONS);
   await app.container.cache.set(CACHE_KEYS.folderPick(userId), folders, FOLDER_PICK_TTL_SEC);
+
+  const counts = await Promise.all(
+    shown.map((name) =>
+      listPendingInTopicFolder(root, name)
+        .then((files) => files.length)
+        .catch(() => 0)
+    )
+  );
+
   const rows = shown.map((name, i) => {
-    const label = name.length > 36 ? `${name.slice(0, 34)}…` : name;
+    const label = folderButtonLabel(name, counts[i] ?? 0);
     return [{ text: label, callbackData: `${CALLBACK_FOLDER_PICK_PREFIX}${i}` }];
   });
   let intro = faMessages.listFoldersIntro;
