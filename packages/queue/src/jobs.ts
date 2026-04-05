@@ -1,5 +1,7 @@
 import type { MessengerPlatform } from '@pinbale/core';
 
+export type { InstagramJobPayload } from '@pinbale/instagram';
+
 export type MaterialsJobPayload = {
   userId: string;
   chatId: string;

@@ -1,16 +1,17 @@
 # Pinbale Service
 
-Production-grade Node.js + TypeScript backend for a Bale messenger bot that searches Pinterest server-side and delivers paginated results to users.
+Production-grade Node.js + TypeScript backend for a Bale/Telegram bot: ارسال تصاویر از آرشیو محلی، و اختیاریاً پست‌های عمومی اینستاگرام.
 
 ## Architecture Overview
 
-- `apps/api`: Fastify API, Bale webhook, health endpoints, internal endpoints, OpenAPI docs.
-- `apps/worker`: BullMQ workers for asynchronous jobs (warmup/health/search pipeline hooks).
-- `packages/core`: domain models, provider contracts, errors, query logic.
-- `packages/providers`: official API provider, Playwright provider, cached fallback provider.
+- `apps/api`: Fastify API، وب‌هوک بله/تلگرام، سرو فایل تصویر، health و internal.
+- `apps/worker`: BullMQ workers برای ارسال مواد محلی و job اینستاگرام.
+- `packages/core`: domain models، خطاها، مسیرهای تصویر محلی.
+- `packages/instagram`: wrapper روی `scraper-instagram`، دانلود به کش، پیام‌های فارسی لایهٔ دامنه.
+- `packages/providers`: Pinterest (official / Playwright / hybrid).
 - `packages/cache`: Redis cache/session/rate-limit services.
 - `packages/queue`: BullMQ queue definitions and payload types.
-- `packages/bale`: Bale client, adapter, parser, Persian formatter.
+- `packages/bale`: Bale client، adapter، parser، پیام‌های فارسی ربات.
 - `packages/observability`: structured logging and metrics-friendly hooks.
 - `packages/config`: typed environment parsing via Zod.
 - `packages/testing`: shared test setup utilities.
@@ -44,9 +45,17 @@ Selection controlled by `PINTEREST_PROVIDER_MODE`.
 - `npm run lint`
 - `npm run build`
 
+## Bot Commands (خلاصه)
+
+- `/list` — انتخاب موضوع از پوشه‌های `images` و ارسال ترتیبی (نام فایل عددی).
+- `/instagram <username>` یا `/ig <username>` — پست‌های اخیر پروفایل **عمومی** (بدون لاگین؛ حداکثر تعداد با `INSTAGRAM_MAX_POSTS` در `.env`، پیش‌فرض ۹، سقف ۲۰).
+- `/help`، `/start`
+
 ## API Endpoints
 
-- `POST /webhooks/bale`
+- `POST /webhooks/bale` (و در صورت تنظیم، `POST /webhooks/telegram`)
+- `GET /media/local/:filename` — تصاویر موضوعی/ریشه
+- `GET /media/instagram/:filename` — فایل کش موقت اینستاگرام (برای `PUBLIC_BASE_URL`)
 - `GET /health/live`
 - `GET /health/ready`
 - `GET /health/providers`
@@ -59,13 +68,17 @@ Internal endpoints require `x-admin-token`.
 
 ## Queue Behavior
 
-Defined queues:
-- `search-jobs`
-- `screenshot-archive-jobs`
-- `provider-warmup-jobs`
-- `provider-health-jobs`
+صف‌های فعال در `packages/queue` (نام دقیق در `QUEUE_NAMES`):
 
-Global limiter and retry/backoff are configured in `packages/queue`.
+- `materials-jobs` — ارسال تصاویر از `LOCAL_IMAGES_DIR`
+- `instagram-fetch` — اسکرپ و ارسال پست‌های اینستاگرام
+
+تنظیم retry/backoff در `createQueues`.
+
+### اینستاگرام و وابستگی npm
+
+- در npm پکیج با نام **`scrape-instagram` وجود ندارد**؛ از **`scraper-instagram`** استفاده می‌شود (GPL-2.0-only). قبل از توزیع، مجوز را با نیاز پروژهٔ خود هماهنگ کنید.
+- کش فایل‌ها: `LOCAL_IMAGES_DIR/instagram-cache/` با الگوی `{username}_{timestamp}_{index}.jpg`؛ فایل‌های قدیمی‌تر از ۲۴ ساعت در هر job به‌صورت best-effort حذف می‌شوند؛ پس از ارسال موفق، فایل همان نوبت پاک می‌شود.
 
 ## Production Notes
 

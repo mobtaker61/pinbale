@@ -63,7 +63,10 @@ const EnvSchema = z
 
   /** مسیر نسبت به cwd سرویس (مثلاً ریشهٔ monorepo یا /app در داکر) */
   LOCAL_IMAGES_DIR: z.string().default('images'),
-  LOCAL_IMAGES_PER_REQUEST: z.coerce.number().min(1).max(50).default(10)
+  LOCAL_IMAGES_PER_REQUEST: z.coerce.number().min(1).max(50).default(10),
+
+  /** حداکثر تعداد پست اینستاگرام برای هر درخواست `/instagram` (صف worker) */
+  INSTAGRAM_MAX_POSTS: z.coerce.number().min(1).max(20).default(9)
   })
   .superRefine((data, ctx) => {
     const hasBale = Boolean(data.BALE_BOT_TOKEN?.trim());

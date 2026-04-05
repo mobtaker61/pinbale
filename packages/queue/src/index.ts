@@ -1,7 +1,7 @@
 import { Queue } from 'bullmq';
 import type { RedisClient } from '@pinbale/cache';
 import { QUEUE_NAMES } from './queues.js';
-import type { MaterialsJobPayload } from './jobs.js';
+import type { InstagramJobPayload, MaterialsJobPayload } from './jobs.js';
 
 export function createQueues(redis: RedisClient, _max?: number, _durationMs?: number) {
   const base = {
@@ -15,8 +15,9 @@ export function createQueues(redis: RedisClient, _max?: number, _durationMs?: nu
   };
 
   const materialsQueue = new Queue<MaterialsJobPayload>(QUEUE_NAMES.materials, base);
+  const instagramQueue = new Queue<InstagramJobPayload>(QUEUE_NAMES.instagram, base);
 
-  return { materialsQueue };
+  return { materialsQueue, instagramQueue };
 }
 
 export * from './queues.js';

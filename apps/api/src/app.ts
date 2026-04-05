@@ -35,7 +35,9 @@ export async function createApp() {
     timeWindow: '1 minute',
     allowList: (req) => {
       const pathOnly = req.url.split('?')[0] ?? '';
-      return pathOnly.startsWith('/media/local/');
+      return (
+        pathOnly.startsWith('/media/local/') || pathOnly.startsWith('/media/instagram/')
+      );
     }
   });
 

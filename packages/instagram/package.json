@@ -1,0 +1,16 @@
+{
+  "name": "@pinbale/instagram",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --out-dir dist --external scraper-instagram"
+  },
+  "dependencies": {
+    "@pinbale/core": "*",
+    "scraper-instagram": "^1.0.17",
+    "undici": "^7.5.0",
+    "zod": "^3.24.2"
+  }
+}

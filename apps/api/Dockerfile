@@ -11,6 +11,7 @@ COPY packages/observability/package.json ./packages/observability/package.json
 COPY packages/cache/package.json ./packages/cache/package.json
 COPY packages/queue/package.json ./packages/queue/package.json
 COPY packages/bale/package.json ./packages/bale/package.json
+COPY packages/instagram/package.json ./packages/instagram/package.json
 COPY packages/providers/package.json ./packages/providers/package.json
 COPY packages/testing/package.json ./packages/testing/package.json
 RUN npm install

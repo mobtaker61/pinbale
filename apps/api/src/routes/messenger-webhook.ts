@@ -20,6 +20,7 @@ import {
   resolveLocalImageDirs
 } from '@pinbale/core';
 import type { AppConfig } from '@pinbale/config';
+import { tryHandleInstagramCommand } from './instagram-webhook.js';
 
 const id = z.union([z.string(), z.number()]).transform(String);
 
@@ -266,6 +267,20 @@ async function handleMessengerWebhook(
 
   if (!isUserAllowlisted(app.container.config, platform, userId)) {
     await adapter.sendText(chatId, faMessages.notAllowlisted);
+    return reply.send({ ok: true });
+  }
+
+  if (
+    await tryHandleInstagramCommand(
+      app,
+      platform,
+      adapter,
+      message.text,
+      userId,
+      chatId,
+      request.id
+    )
+  ) {
     return reply.send({ ok: true });
   }
 

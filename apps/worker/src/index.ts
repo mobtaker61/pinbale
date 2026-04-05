@@ -5,7 +5,12 @@ import { getConfig } from '@pinbale/config';
 import type { AppConfig } from '@pinbale/config';
 import { createLogger } from '@pinbale/observability';
 import { createRedisClient, RedisCacheService } from '@pinbale/cache';
-import { QUEUE_NAMES, type MaterialsJobPayload } from '@pinbale/queue';
+import {
+  QUEUE_NAMES,
+  type InstagramJobPayload,
+  type MaterialsJobPayload
+} from '@pinbale/queue';
+import { processInstagramJob } from './handlers/instagram-handler.js';
 import { BaleAdapter, BaleClient, faMessages } from '@pinbale/bale';
 import {
   CACHE_KEYS,
@@ -272,7 +277,19 @@ new Worker<MaterialsJobPayload>(
   { connection: redis, concurrency: 1 }
 );
 
-logger.info('worker started (materials only)');
+new Worker<InstagramJobPayload>(
+  QUEUE_NAMES.instagram,
+  async (job) => {
+    await processInstagramJob(job, {
+      config,
+      logger,
+      messengers
+    });
+  },
+  { connection: redis, concurrency: 1 }
+);
+
+logger.info('worker started (materials + instagram)');
 
 function buildPublicImageUrl(
   cfg: AppConfig,

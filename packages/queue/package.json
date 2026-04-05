@@ -5,10 +5,11 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsup src/index.ts --format esm --out-dir dist --external bullmq"
+    "build": "tsup src/index.ts --format esm --out-dir dist --external bullmq --external @pinbale/instagram"
   },
   "dependencies": {
     "@pinbale/cache": "*",
-    "@pinbale/core": "*"
+    "@pinbale/core": "*",
+    "@pinbale/instagram": "*"
   }
 }

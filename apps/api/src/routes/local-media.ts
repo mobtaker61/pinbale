@@ -8,6 +8,9 @@ import { isSafeTopicFolderName, resolveLocalImageDirs } from '@pinbale/core';
 /** فقط نام فایل بدون مسیر؛ جلوگیری از path traversal */
 const SAFE_BASENAME = /^[a-zA-Z0-9._-]+\.(jpe?g|png|webp|gif)$/i;
 
+/** کش اینستاگرام: `{username}_{timestamp}_{index}.jpg` */
+const SAFE_INSTAGRAM_CACHE = /^[a-zA-Z0-9._-]+\.jpe?g$/i;
+
 const MediaQuerySchema = z.object({
   from: z.string().optional()
 });
@@ -58,4 +61,33 @@ export async function registerLocalMediaRoutes(app: FastifyInstance) {
       return reply.send(createReadStream(abs));
     }
   );
+
+  app.get<{ Params: { filename: string } }>('/media/instagram/:filename', async (request, reply) => {
+    const raw = basename(request.params.filename);
+    if (!SAFE_INSTAGRAM_CACHE.test(raw)) {
+      return reply.code(400).send({ message: 'نام فایل نامعتبر است.' });
+    }
+
+    const { root } = resolveLocalImageDirs(process.cwd(), app.container.config.LOCAL_IMAGES_DIR);
+    const rootAbs = resolve(root);
+    const cacheDir = resolve(root, 'instagram-cache');
+    const abs = resolve(cacheDir, raw);
+
+    if (!abs.startsWith(cacheDir + '/') && abs !== cacheDir) {
+      return reply.code(403).send({ message: 'Forbidden' });
+    }
+
+    try {
+      const st = await stat(abs);
+      if (!st.isFile()) {
+        return reply.code(404).send({ message: 'Not found' });
+      }
+    } catch {
+      return reply.code(404).send({ message: 'Not found' });
+    }
+
+    reply.header('Content-Type', 'image/jpeg');
+    reply.header('Cache-Control', 'public, max-age=120');
+    return reply.send(createReadStream(abs));
+  });
 }

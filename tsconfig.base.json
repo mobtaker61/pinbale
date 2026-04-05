@@ -23,7 +23,8 @@
       "@pinbale/queue": ["packages/queue/src/index.ts"],
       "@pinbale/bale": ["packages/bale/src/index.ts"],
       "@pinbale/providers": ["packages/providers/src/index.ts"],
-      "@pinbale/testing": ["packages/testing/src/index.ts"]
+      "@pinbale/testing": ["packages/testing/src/index.ts"],
+      "@pinbale/instagram": ["packages/instagram/src/index.ts"]
     }
   }
 }

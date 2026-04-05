@@ -11,6 +11,7 @@
     { "path": "./packages/cache" },
     { "path": "./packages/queue" },
     { "path": "./packages/bale" },
+    { "path": "./packages/instagram" },
     { "path": "./packages/providers" },
     { "path": "./packages/testing" },
     { "path": "./apps/api" },
