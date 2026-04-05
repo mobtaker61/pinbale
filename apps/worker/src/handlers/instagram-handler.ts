@@ -12,7 +12,8 @@ import {
   InstagramNotFoundError,
   InstagramPrivateError,
   InstagramScraper,
-  InstagramScraperError
+  InstagramScraperError,
+  probeEgressIp
 } from '@pinbale/instagram';
 import type { MessengerPlatform } from '@pinbale/core';
 import { resolveLocalImageDirs } from '@pinbale/core';
@@ -40,14 +41,48 @@ export async function processInstagramJob(
   const cacheDir = join(root, CACHE_SUBDIR);
 
   const maxPosts = deps.config.INSTAGRAM_MAX_POSTS;
-  const scraper = new InstagramScraper(maxPosts, {
-    sessionId: deps.config.INSTAGRAM_SESSION_ID,
-    csrfToken: deps.config.INSTAGRAM_CSRF_TOKEN,
-    proxyUrl: deps.config.INSTAGRAM_HTTPS_PROXY,
-    webRetryMax: deps.config.INSTAGRAM_WEB_RETRY_MAX,
-    webRetryBaseMs: deps.config.INSTAGRAM_WEB_RETRY_BASE_MS
-  });
+  let scraper: InstagramScraper;
+  try {
+    scraper = new InstagramScraper(maxPosts, {
+      sessionId: deps.config.INSTAGRAM_SESSION_ID,
+      csrfToken: deps.config.INSTAGRAM_CSRF_TOKEN,
+      proxyUrl: deps.config.INSTAGRAM_HTTPS_PROXY,
+      webRetryMax: deps.config.INSTAGRAM_WEB_RETRY_MAX,
+      webRetryBaseMs: deps.config.INSTAGRAM_WEB_RETRY_BASE_MS
+    });
+  } catch (err) {
+    if (err instanceof InstagramScraperError && err.statusHint === 400) {
+      deps.logger.error(
+        { err: err instanceof Error ? err.message : err, requestId },
+        'instagram job: invalid INSTAGRAM_HTTPS_PROXY'
+      );
+      await bot.sendText(chatId, faMessages.instagramBadProxy);
+      return;
+    }
+    throw err;
+  }
   const downloader = new InstagramDownloader();
+
+  const egress = await probeEgressIp(deps.config.INSTAGRAM_HTTPS_PROXY);
+  if (egress.ok) {
+    deps.logger.info(
+      {
+        requestId,
+        instagramEgressIp: egress.ip,
+        instagramTrafficViaProxy: egress.viaProxy
+      },
+      'instagram job: egress IP (همان مسیر ترافیک به اینستاگرام)'
+    );
+  } else {
+    deps.logger.warn(
+      {
+        requestId,
+        err: egress.error,
+        instagramTrafficViaProxy: egress.viaProxy
+      },
+      'instagram job: egress IP probe failed (اسکرپ همچنان امتحان می‌شود)'
+    );
+  }
 
   deps.logger.info(
     {

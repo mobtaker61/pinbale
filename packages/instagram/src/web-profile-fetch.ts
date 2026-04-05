@@ -5,6 +5,7 @@ import {
   InstagramPrivateError,
   InstagramScraperError
 } from './errors.js';
+import { normalizeHttpProxyUrl } from './proxy-url.js';
 
 /** همان شناسهٔ اپ وب که اینستاگرام در مرورگر استفاده می‌کند */
 const IG_WEB_APP_ID = '936619743392459';
@@ -82,7 +83,7 @@ export async function fetchPostsViaWebProfile(
 
   let dispatcher: ProxyAgent | undefined;
   if (opts.proxyUrl) {
-    dispatcher = new ProxyAgent(opts.proxyUrl);
+    dispatcher = new ProxyAgent(normalizeHttpProxyUrl(opts.proxyUrl));
   }
 
   try {

@@ -7,6 +7,7 @@ import {
   InstagramScraperError
 } from './errors.js';
 import { fetchPostsViaWebProfile, type WebProfileFetchOptions } from './web-profile-fetch.js';
+import { normalizeHttpProxyUrl } from './proxy-url.js';
 
 const require = createRequire(import.meta.url);
 
@@ -39,7 +40,9 @@ export class InstagramScraper {
     this.fetchOpts = {
       sessionId: options.sessionId?.trim() || undefined,
       csrfToken: options.csrfToken?.trim() || undefined,
-      proxyUrl: options.proxyUrl?.trim() || undefined,
+      proxyUrl: options.proxyUrl?.trim()
+        ? normalizeHttpProxyUrl(options.proxyUrl.trim())
+        : undefined,
       webRetryMax: options.webRetryMax,
       webRetryBaseMs: options.webRetryBaseMs
     };

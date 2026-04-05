@@ -70,5 +70,8 @@ export const faMessages = {
   instagramNoPosts: 'هیچ پستی برای نمایش یافت نشد 📭',
   instagramUsageHint:
     'دستور: `/instagram نام‌کاربری` یا `/ig نام‌کاربری`\nمثال: `/instagram natgeo` یا لینک پروفایل.',
-  instagramInvalidUsername: 'نام کاربری اینستاگرام معتبر نیست (فقط حروف، اعداد، نقطه و زیرخط، حداکثر ۳۰ کاراکتر).'
+  instagramInvalidUsername: 'نام کاربری اینستاگرام معتبر نیست (فقط حروف، اعداد، نقطه و زیرخط، حداکثر ۳۰ کاراکتر).',
+  instagramBadProxy:
+    'مقدار `INSTAGRAM_HTTPS_PROXY` نامعتبر است. باید پروکسی HTTP به شکل `http://USER:PASS@HOST:PORT` باشد.\n' +
+    'لینک تونل Cloudflare به‌تنهایی پروکسی نیست؛ روی ماشین خانه باید یک سرویس پروکسی HTTP اجرا و همان را تونل کنید.'
 } as const;
