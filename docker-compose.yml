@@ -15,7 +15,7 @@ services:
       - redis
     ports:
       - "3000:3000"
-    # تصاویر روی هاست؛ بدون این mount کانتینر پوشهٔ خالی می‌بیند
+    # کل درخت images روی هاست (موضوعات، sent، کش اینستاگرام) → /app/images در هر دو سرویس
     volumes:
       - ./images:/app/images
 
@@ -28,4 +28,5 @@ services:
     depends_on:
       - redis
     volumes:
+      # همان مسیر api تا worker و api هر دو به instagram-cache و sent دسترسی یکسان داشته باشند
       - ./images:/app/images

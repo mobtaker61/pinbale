@@ -16,3 +16,7 @@ images/*
 !images/sent/
 images/sent/*
 !images/sent/.gitkeep
+# کش اینستاگرام (فقط اسکلت پوشه در git؛ فایل‌های کش untracked)
+!images/instagram-cache/
+images/instagram-cache/*
+!images/instagram-cache/.gitkeep

@@ -3,10 +3,13 @@ import path from 'node:path';
 
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
 
-/** نام پوشهٔ موضوع؛ یک سطح، بدون مسیر و بدون sent */
+/** رزرو برای ساختار ربات؛ موضوع کاربر نمی‌تواند این نام‌ها باشد */
+const RESERVED_IMAGE_ROOT_DIR_NAMES = new Set(['sent', 'instagram-cache']);
+
+/** نام پوشهٔ موضوع؛ یک سطح، بدون مسیر و بدون پوشه‌های رزرو */
 export function isSafeTopicFolderName(name: string): boolean {
   if (!name || name.length > 200) return false;
-  if (name === 'sent' || name.startsWith('.')) return false;
+  if (RESERVED_IMAGE_ROOT_DIR_NAMES.has(name) || name.startsWith('.')) return false;
   if (name.includes('/') || name.includes('\\') || name.includes('\0')) return false;
   if (name.includes('..')) return false;
   return true;
@@ -23,13 +26,13 @@ export function resolveLocalImageDirs(cwd: string, relativeDir: string): LocalIm
   return { root, sent };
 }
 
-/** پوشه‌های مستقیم زیر `root` به‌جز `sent` و مخفی. */
+/** پوشه‌های مستقیم زیر `root` به‌جز `sent`، `instagram-cache` و مخفی. */
 export async function listTopicSubfolders(rootDir: string): Promise<string[]> {
   const entries = await readdir(rootDir, { withFileTypes: true });
   const names: string[] = [];
   for (const e of entries) {
     if (!e.isDirectory()) continue;
-    if (e.name === 'sent' || e.name.startsWith('.')) continue;
+    if (RESERVED_IMAGE_ROOT_DIR_NAMES.has(e.name) || e.name.startsWith('.')) continue;
     if (!isSafeTopicFolderName(e.name)) continue;
     names.push(e.name);
   }
