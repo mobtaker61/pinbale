@@ -66,7 +66,12 @@ const EnvSchema = z
   LOCAL_IMAGES_PER_REQUEST: z.coerce.number().min(1).max(50).default(10),
 
   /** حداکثر تعداد پست اینستاگرام برای هر درخواست `/instagram` (صف worker) */
-  INSTAGRAM_MAX_POSTS: z.coerce.number().min(1).max(20).default(9)
+  INSTAGRAM_MAX_POSTS: z.coerce.number().min(1).max(20).default(9),
+  /**
+   * کوکی `sessionid` مرورگر پس از ورود به instagram.com — اختیاری؛ گاهی بدون آن اینستاگرام 302/مسدود می‌کند.
+   * هرگز در git کامیت نکنید.
+   */
+  INSTAGRAM_SESSION_ID: z.string().optional()
   })
   .superRefine((data, ctx) => {
     const hasBale = Boolean(data.BALE_BOT_TOKEN?.trim());

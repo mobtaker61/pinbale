@@ -11,7 +11,8 @@ import {
   InstagramDownloader,
   InstagramNotFoundError,
   InstagramPrivateError,
-  InstagramScraper
+  InstagramScraper,
+  InstagramScraperError
 } from '@pinbale/instagram';
 import type { MessengerPlatform } from '@pinbale/core';
 import { resolveLocalImageDirs } from '@pinbale/core';
@@ -39,7 +40,7 @@ export async function processInstagramJob(
   const cacheDir = join(root, CACHE_SUBDIR);
 
   const maxPosts = deps.config.INSTAGRAM_MAX_POSTS;
-  const scraper = new InstagramScraper(maxPosts);
+  const scraper = new InstagramScraper(maxPosts, deps.config.INSTAGRAM_SESSION_ID);
   const downloader = new InstagramDownloader();
 
   deps.logger.info(
@@ -106,6 +107,11 @@ export async function processInstagramJob(
       await bot.sendText(chatId, faMessages.instagramPrivate);
     } else if (err instanceof InstagramBlockedError) {
       await bot.sendText(chatId, faMessages.instagramBlocked);
+    } else if (
+      err instanceof InstagramScraperError &&
+      [302, 401, 429].includes(err.statusHint ?? -1)
+    ) {
+      await bot.sendText(chatId, faMessages.instagramAccessDenied);
     } else {
       await bot.sendText(chatId, faMessages.instagramError);
     }

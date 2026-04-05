@@ -29,9 +29,11 @@ type RawProfile = {
  */
 export class InstagramScraper {
   private readonly maxPosts: number;
+  private readonly sessionId?: string;
 
-  constructor(maxPosts = 9) {
+  constructor(maxPosts = 9, sessionId?: string) {
     this.maxPosts = maxPosts;
+    this.sessionId = sessionId?.trim() || undefined;
   }
 
   /**
@@ -39,9 +41,18 @@ export class InstagramScraper {
    */
   async fetchUserPosts(username: string): Promise<InstagramPost[]> {
     const InstaCtor = require('scraper-instagram') as new () => {
+      authBySessionId(id: string): Promise<unknown>;
       getProfile(u: string): Promise<RawProfile>;
     };
     const client = new InstaCtor();
+
+    if (this.sessionId) {
+      try {
+        await client.authBySessionId(this.sessionId);
+      } catch (err: unknown) {
+        throw this.mapLibraryError(err);
+      }
+    }
 
     let profile: RawProfile;
     try {
@@ -98,6 +109,10 @@ export class InstagramScraper {
     }
     if (code === 429) {
       return new InstagramScraperError('Instagram rate limit (429)', 429);
+    }
+    /** ریدایرکت به صفحاتی غیر از URLهای شناخته‌شده توسط کتابخانه (اغلب ضدربات/ورود) */
+    if (code === 302) {
+      return new InstagramScraperError('Instagram redirect 302 (login wall or bot detection)', 302);
     }
     if (Number.isFinite(code)) {
       return new InstagramScraperError(`Instagram HTTP error: ${code}`, code);

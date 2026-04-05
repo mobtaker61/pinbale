@@ -59,6 +59,9 @@ export const faMessages = {
   instagramPrivate: 'این حساب خصوصی است و نمی‌تواند مشاهده شود 🔒',
   instagramBlocked: 'این حساب تعلیق‌شده است ⛔',
   instagramError: 'خطا در دانلود پست‌های اینستاگرام. بعداً دوباره سعی کنید ❌',
+  instagramAccessDenied:
+    'اینستاگرام این درخواست را قبول نکرد (محدودیت ربات، ریدایرکت به ورود یا ازدحمد). چند ساعت بعد دوباره امتحان کنید.\n' +
+    'اگر پایدار است، در `.env` مقدار اختیاری `INSTAGRAM_SESSION_ID` را از کوکی `sessionid` مرورگر بعد از ورود به instagram.com بگذارید (ایمن نگه دارید؛ در git نگذارید).',
   instagramNoPosts: 'هیچ پستی برای نمایش یافت نشد 📭',
   instagramUsageHint:
     'دستور: `/instagram نام‌کاربری` یا `/ig نام‌کاربری`\nمثال: `/instagram natgeo` یا لینک پروفایل.',
