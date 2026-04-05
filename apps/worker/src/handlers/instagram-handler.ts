@@ -43,7 +43,9 @@ export async function processInstagramJob(
   const scraper = new InstagramScraper(maxPosts, {
     sessionId: deps.config.INSTAGRAM_SESSION_ID,
     csrfToken: deps.config.INSTAGRAM_CSRF_TOKEN,
-    proxyUrl: deps.config.INSTAGRAM_HTTPS_PROXY
+    proxyUrl: deps.config.INSTAGRAM_HTTPS_PROXY,
+    webRetryMax: deps.config.INSTAGRAM_WEB_RETRY_MAX,
+    webRetryBaseMs: deps.config.INSTAGRAM_WEB_RETRY_BASE_MS
   });
   const downloader = new InstagramDownloader();
 
@@ -120,9 +122,11 @@ export async function processInstagramJob(
       await bot.sendText(chatId, faMessages.instagramPrivate);
     } else if (err instanceof InstagramBlockedError) {
       await bot.sendText(chatId, faMessages.instagramBlocked);
+    } else if (err instanceof InstagramScraperError && err.statusHint === 429) {
+      await bot.sendText(chatId, faMessages.instagramRateLimited);
     } else if (
       err instanceof InstagramScraperError &&
-      [302, 401, 429].includes(err.statusHint ?? -1)
+      [302, 401].includes(err.statusHint ?? -1)
     ) {
       await bot.sendText(chatId, faMessages.instagramAccessDenied);
     } else {

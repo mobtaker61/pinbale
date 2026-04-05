@@ -14,18 +14,32 @@ export type WebProfileFetchOptions = {
   csrfToken?: string;
   /** مثال: `http://user:pass@host:port` — ترافیک از IP دیگر (ترجیحاً residential) */
   proxyUrl?: string;
+  /** حداکثر تعداد درخواست به endpoint (پس از ۴۲۹ با backoff تکرار) */
+  webRetryMax?: number;
+  /** پایهٔ تأخیر بین تلاش‌ها (میلی‌ثانیه) */
+  webRetryBaseMs?: number;
 };
 
-/**
- * دریافت پست‌ها از `web_profile_info` با هدر شبیه مرورگر؛ معمولاً مقاوم‌تر از `https.get` خام کتابخانهٔ قدیمی است.
- */
-export async function fetchPostsViaWebProfile(
-  username: string,
-  maxPosts: number,
-  opts: WebProfileFetchOptions
-): Promise<InstagramPost[]> {
-  const url = `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`;
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
+function backoffMs(
+  attempt: number,
+  baseMs: number,
+  retryAfterSec: number | undefined
+): number {
+  if (retryAfterSec != null && Number.isFinite(retryAfterSec) && retryAfterSec > 0) {
+    return Math.min(retryAfterSec * 1000, 120_000);
+  }
+  return Math.min(baseMs * attempt + Math.random() * 2000, 90_000);
+}
+
+async function drainBody(res: Awaited<ReturnType<typeof fetch>>): Promise<void> {
+  await res.text().catch(() => undefined);
+}
+
+function buildHeaders(username: string, opts: WebProfileFetchOptions): Record<string, string> {
   const cookies: string[] = [];
   if (opts.sessionId) cookies.push(`sessionid=${opts.sessionId}`);
   if (opts.csrfToken) cookies.push(`csrftoken=${opts.csrfToken}`);
@@ -46,57 +60,102 @@ export async function fetchPostsViaWebProfile(
   };
   if (cookieHeader) headers.Cookie = cookieHeader;
   if (opts.csrfToken) headers['X-CSRFToken'] = opts.csrfToken;
+  return headers;
+}
+
+function isRateLimitMessage(msg: string): boolean {
+  return /rate|limit|throttl|too many|try again|wait|slow down|temporar/i.test(msg);
+}
+
+/**
+ * دریافت پست‌ها از `web_profile_info` با هدر شبیه مرورگر؛ معمولاً مقاوم‌تر از `https.get` خام کتابخانهٔ قدیمی است.
+ */
+export async function fetchPostsViaWebProfile(
+  username: string,
+  maxPosts: number,
+  opts: WebProfileFetchOptions
+): Promise<InstagramPost[]> {
+  const url = `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`;
+  const headers = buildHeaders(username, opts);
+  const maxAttempts = Math.max(1, Math.min(12, opts.webRetryMax ?? 5));
+  const baseMs = Math.max(500, opts.webRetryBaseMs ?? 5000);
 
   let dispatcher: ProxyAgent | undefined;
   if (opts.proxyUrl) {
     dispatcher = new ProxyAgent(opts.proxyUrl);
   }
 
-  let res: Awaited<ReturnType<typeof fetch>>;
   try {
-    res = await fetch(url, {
-      method: 'GET',
-      headers,
-      dispatcher,
-      redirect: 'manual',
-      signal: AbortSignal.timeout(35_000)
-    });
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers,
+        dispatcher,
+        redirect: 'manual',
+        signal: AbortSignal.timeout(35_000)
+      });
+
+      if (res.status === 301 || res.status === 302 || res.status === 307 || res.status === 308) {
+        await drainBody(res);
+        throw new InstagramScraperError('web_profile_info: redirect (login/checkpoint)', 302);
+      }
+      if (res.status === 404) {
+        await drainBody(res);
+        throw new InstagramNotFoundError();
+      }
+      if (res.status === 401) {
+        await drainBody(res);
+        throw new InstagramScraperError('web_profile_info: 401 (کوکی نامعتبر یا منقضی؟)', 401);
+      }
+      if (res.status === 403) {
+        await drainBody(res);
+        throw new InstagramScraperError('web_profile_info: 403', 403);
+      }
+      if (res.status === 429) {
+        await drainBody(res);
+        if (attempt < maxAttempts) {
+          const ra = res.headers.get('retry-after');
+          const sec = ra ? parseInt(ra, 10) : NaN;
+          await sleep(backoffMs(attempt, baseMs, Number.isFinite(sec) ? sec : undefined));
+          continue;
+        }
+        throw new InstagramScraperError('web_profile_info: rate limit', 429);
+      }
+      if (!res.ok) {
+        await drainBody(res);
+        throw new InstagramScraperError(`web_profile_info: HTTP ${res.status}`, res.status);
+      }
+
+      const text = await res.text();
+      let json: unknown;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        const lower = text.slice(0, 500).toLowerCase();
+        if (lower.includes('login') || lower.includes('checkpoint') || lower.includes('challenge')) {
+          throw new InstagramScraperError('web_profile_info: پاسخ HTML (ورود/چالش)', 302);
+        }
+        throw new InstagramScraperError('web_profile_info: JSON نامعتبر', 406);
+      }
+
+      try {
+        return parseWebProfileResponse(json, maxPosts);
+      } catch (e) {
+        if (
+          e instanceof InstagramScraperError &&
+          e.statusHint === 429 &&
+          attempt < maxAttempts
+        ) {
+          await sleep(backoffMs(attempt, baseMs, undefined));
+          continue;
+        }
+        throw e;
+      }
+    }
+    throw new InstagramScraperError('web_profile_info: rate limit', 429);
   } finally {
     await dispatcher?.close();
   }
-
-  if (res.status === 301 || res.status === 302 || res.status === 307 || res.status === 308) {
-    throw new InstagramScraperError('web_profile_info: redirect (login/checkpoint)', 302);
-  }
-  if (res.status === 404) {
-    throw new InstagramNotFoundError();
-  }
-  if (res.status === 401) {
-    throw new InstagramScraperError('web_profile_info: 401 (کوکی نامعتبر یا منقضی؟)', 401);
-  }
-  if (res.status === 403) {
-    throw new InstagramScraperError('web_profile_info: 403', 403);
-  }
-  if (res.status === 429) {
-    throw new InstagramScraperError('web_profile_info: rate limit', 429);
-  }
-  if (!res.ok) {
-    throw new InstagramScraperError(`web_profile_info: HTTP ${res.status}`, res.status);
-  }
-
-  const text = await res.text();
-  let json: unknown;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    const lower = text.slice(0, 500).toLowerCase();
-    if (lower.includes('login') || lower.includes('checkpoint') || lower.includes('challenge')) {
-      throw new InstagramScraperError('web_profile_info: پاسخ HTML (ورود/چالش)', 302);
-    }
-    throw new InstagramScraperError('web_profile_info: JSON نامعتبر', 406);
-  }
-
-  return parseWebProfileResponse(json, maxPosts);
 }
 
 /** برای تست واحد */
@@ -110,6 +169,9 @@ export function parseWebProfileResponse(data: unknown, maxPosts: number): Instag
     const msg = String(root.message ?? 'fail');
     if (/user/i.test(msg) && /not found|does not exist|invalid/i.test(msg)) {
       throw new InstagramNotFoundError();
+    }
+    if (isRateLimitMessage(msg)) {
+      throw new InstagramScraperError(`web_profile_info: ${msg}`, 429);
     }
     throw new InstagramScraperError(`web_profile_info: ${msg}`, 403);
   }

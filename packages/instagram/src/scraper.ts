@@ -39,7 +39,9 @@ export class InstagramScraper {
     this.fetchOpts = {
       sessionId: options.sessionId?.trim() || undefined,
       csrfToken: options.csrfToken?.trim() || undefined,
-      proxyUrl: options.proxyUrl?.trim() || undefined
+      proxyUrl: options.proxyUrl?.trim() || undefined,
+      webRetryMax: options.webRetryMax,
+      webRetryBaseMs: options.webRetryBaseMs
     };
   }
 

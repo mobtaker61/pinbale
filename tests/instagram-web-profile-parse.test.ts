@@ -55,4 +55,17 @@ describe('parseWebProfileResponse', () => {
       parseWebProfileResponse({ status: 'fail', message: 'Something wrong' }, 9)
     ).toThrow(InstagramScraperError);
   });
+
+  test('status fail rate limit message uses 429', () => {
+    try {
+      parseWebProfileResponse(
+        { status: 'fail', message: 'Please wait a few minutes before you try again.' },
+        9
+      );
+      expect.fail('expected throw');
+    } catch (e) {
+      expect(e).toBeInstanceOf(InstagramScraperError);
+      expect((e as InstagramScraperError).statusHint).toBe(429);
+    }
+  });
 });

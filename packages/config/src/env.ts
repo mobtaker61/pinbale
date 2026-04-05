@@ -75,7 +75,11 @@ const EnvSchema = z
   /** همراه sessionid؛ از همان Cookies در DevTools (نام `csrftoken`) */
   INSTAGRAM_CSRF_TOKEN: z.string().optional(),
   /** خروجی ترافیک اینستاگرام از IP دیگر؛ مثال `http://user:pass@host:8888` (ترجیحاً residential) */
-  INSTAGRAM_HTTPS_PROXY: z.string().optional()
+  INSTAGRAM_HTTPS_PROXY: z.string().optional(),
+  /** حداکثر تعداد درخواست به `web_profile_info` (بعد از ۴۲۹ یا پیام rate limit در JSON با تأخیر تکرار می‌شود؛ حداقل ۱) */
+  INSTAGRAM_WEB_RETRY_MAX: z.coerce.number().min(1).max(12).default(5),
+  /** پایهٔ تأخیر بین تلاش‌ها (میلی‌ثانیه)؛ با jitter ضرب می‌شود */
+  INSTAGRAM_WEB_RETRY_BASE_MS: z.coerce.number().min(1000).max(120_000).default(5000)
   })
   .superRefine((data, ctx) => {
     const hasBale = Boolean(data.BALE_BOT_TOKEN?.trim());
