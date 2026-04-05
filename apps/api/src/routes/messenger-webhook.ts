@@ -291,21 +291,56 @@ async function handleMessengerWebhook(
   return reply.send({ ok: true });
 }
 
+/**
+ * بعضی کاربران همان URL بله را در setWebhook تلگرام می‌گذارند.
+ * تلگرام با secret_token هدر `x-telegram-bot-api-secret-token` می‌فرستد → همان مسیر، پلتفرم درست.
+ * اگر فقط تلگرام فعال باشد (بدون توکن بله)، کل ترافیک این مسیر = تلگرام.
+ */
 export async function registerWebhookRoutes(app: FastifyInstance) {
   const { messengers, config } = app.container;
 
-  if (messengers.bale) {
-    const baleAdapter = messengers.bale;
-    app.post('/webhooks/bale', (request, reply) =>
-      handleMessengerWebhook(app, request, reply, {
+  if (messengers.bale || messengers.telegram) {
+    app.post('/webhooks/bale', (request, reply) => {
+      const tgHeader = request.headers['x-telegram-bot-api-secret-token'];
+      const telegramAdapter = messengers.telegram;
+
+      if (
+        telegramAdapter &&
+        config.TELEGRAM_WEBHOOK_SECRET &&
+        tgHeader === config.TELEGRAM_WEBHOOK_SECRET
+      ) {
+        return handleMessengerWebhook(app, request, reply, {
+          platform: 'telegram',
+          adapter: telegramAdapter,
+          validateSecret: () => true
+        });
+      }
+
+      if (telegramAdapter && !messengers.bale) {
+        return handleMessengerWebhook(app, request, reply, {
+          platform: 'telegram',
+          adapter: telegramAdapter,
+          validateSecret(req) {
+            if (!config.TELEGRAM_WEBHOOK_SECRET) return true;
+            return req.headers['x-telegram-bot-api-secret-token'] === config.TELEGRAM_WEBHOOK_SECRET;
+          }
+        });
+      }
+
+      const baleAdapter = messengers.bale;
+      if (!baleAdapter) {
+        return reply.code(404).send({ ok: false, error: 'bale_not_configured' });
+      }
+
+      return handleMessengerWebhook(app, request, reply, {
         platform: 'bale',
         adapter: baleAdapter,
         validateSecret(req) {
           if (!config.BALE_WEBHOOK_SECRET) return true;
           return req.headers['x-bale-secret'] === config.BALE_WEBHOOK_SECRET;
         }
-      })
-    );
+      });
+    });
   }
 
   if (messengers.telegram) {
