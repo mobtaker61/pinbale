@@ -6,8 +6,11 @@ import {
   InstagramPrivateError,
   InstagramScraperError
 } from './errors.js';
+import { fetchPostsViaWebProfile, type WebProfileFetchOptions } from './web-profile-fetch.js';
 
 const require = createRequire(import.meta.url);
+
+export type InstagramFetchOptions = WebProfileFetchOptions;
 
 type RawProfile = {
   private?: boolean;
@@ -24,31 +27,62 @@ type RawProfile = {
 };
 
 /**
- * Wrapper روی پکیج npm `scraper-instagram` (بدون لاگین).
- * نکته: پکیج رسمی npm نامش `scraper-instagram` است نه `scrape-instagram`.
+ * ابتدا API وب `web_profile_info` (هدر شبیه مرورگر + اختیاری پروکسی/کوکی کامل)،
+ * در صورت خطا بازگشت به `scraper-instagram`.
  */
 export class InstagramScraper {
   private readonly maxPosts: number;
-  private readonly sessionId?: string;
+  private readonly fetchOpts: WebProfileFetchOptions;
 
-  constructor(maxPosts = 9, sessionId?: string) {
+  constructor(maxPosts = 9, options: InstagramFetchOptions = {}) {
     this.maxPosts = maxPosts;
-    this.sessionId = sessionId?.trim() || undefined;
+    this.fetchOpts = {
+      sessionId: options.sessionId?.trim() || undefined,
+      csrfToken: options.csrfToken?.trim() || undefined,
+      proxyUrl: options.proxyUrl?.trim() || undefined
+    };
   }
 
   /**
    * آخرین پست‌های عمومی پروفایل (تا maxPosts).
    */
   async fetchUserPosts(username: string): Promise<InstagramPost[]> {
+    try {
+      const posts = await fetchPostsViaWebProfile(username, this.maxPosts, this.fetchOpts);
+      const withImage = posts.filter((p) => p.imageUrl);
+      if (withImage.length > 0) {
+        return withImage;
+      }
+      if (posts.length === 0) {
+        return [];
+      }
+    } catch (webErr) {
+      if (
+        webErr instanceof InstagramNotFoundError ||
+        webErr instanceof InstagramPrivateError
+      ) {
+        throw webErr;
+      }
+      try {
+        return await this.fetchViaLegacyLibrary(username);
+      } catch {
+        throw webErr;
+      }
+    }
+
+    return this.fetchViaLegacyLibrary(username);
+  }
+
+  private async fetchViaLegacyLibrary(username: string): Promise<InstagramPost[]> {
     const InstaCtor = require('scraper-instagram') as new () => {
       authBySessionId(id: string): Promise<unknown>;
       getProfile(u: string): Promise<RawProfile>;
     };
     const client = new InstaCtor();
 
-    if (this.sessionId) {
+    if (this.fetchOpts.sessionId) {
       try {
-        await client.authBySessionId(this.sessionId);
+        await client.authBySessionId(this.fetchOpts.sessionId);
       } catch (err: unknown) {
         throw this.mapLibraryError(err);
       }
@@ -73,10 +107,10 @@ export class InstagramScraper {
       return [];
     }
 
-    return raw.slice(0, this.maxPosts).map((p) => this.mapPost(p));
+    return raw.slice(0, this.maxPosts).map((p) => this.mapLegacyPost(p));
   }
 
-  private mapPost(p: {
+  private mapLegacyPost(p: {
     shortcode: string;
     caption: string | null;
     likes: number;
@@ -110,7 +144,6 @@ export class InstagramScraper {
     if (code === 429) {
       return new InstagramScraperError('Instagram rate limit (429)', 429);
     }
-    /** ریدایرکت به صفحاتی غیر از URLهای شناخته‌شده توسط کتابخانه (اغلب ضدربات/ورود) */
     if (code === 302) {
       return new InstagramScraperError('Instagram redirect 302 (login wall or bot detection)', 302);
     }

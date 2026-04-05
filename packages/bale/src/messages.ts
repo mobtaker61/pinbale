@@ -60,8 +60,10 @@ export const faMessages = {
   instagramBlocked: 'این حساب تعلیق‌شده است ⛔',
   instagramError: 'خطا در دانلود پست‌های اینستاگرام. بعداً دوباره سعی کنید ❌',
   instagramAccessDenied:
-    'اینستاگرام این درخواست را قبول نکرد (محدودیت ربات، ریدایرکت به ورود یا ازدحمد). چند ساعت بعد دوباره امتحان کنید.\n' +
-    'اگر پایدار است، در `.env` مقدار اختیاری `INSTAGRAM_SESSION_ID` را از کوکی `sessionid` مرورگر بعد از ورود به instagram.com بگذارید (ایمن نگه دارید؛ در git نگذارید).',
+    'اینستاگرام این درخواست را قبول نکرد (محدودیت ربات، IP دیتاسنتر، یا ریدایرکت به ورود).\n' +
+    '۱) کوکی‌های `sessionid` و `csrftoken` را با هم در `.env` بگذارید (`INSTAGRAM_SESSION_ID` و `INSTAGRAM_CSRF_TOKEN`).\n' +
+    '۲) در صورت نیاز `INSTAGRAM_HTTPS_PROXY` با پروکسی residential امتحان کنید.\n' +
+    'این مقادیر را در git قرار ندهید.',
   instagramNoPosts: 'هیچ پستی برای نمایش یافت نشد 📭',
   instagramUsageHint:
     'دستور: `/instagram نام‌کاربری` یا `/ig نام‌کاربری`\nمثال: `/instagram natgeo` یا لینک پروفایل.',

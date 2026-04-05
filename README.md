@@ -79,7 +79,8 @@ Internal endpoints require `x-admin-token`.
 
 - در npm پکیج با نام **`scrape-instagram` وجود ندارد**؛ از **`scraper-instagram`** استفاده می‌شود (GPL-2.0-only). قبل از توزیع، مجوز را با نیاز پروژهٔ خود هماهنگ کنید.
 - کش فایل‌ها: `LOCAL_IMAGES_DIR/instagram-cache/` با الگوی `{username}_{timestamp}_{index}.jpg`؛ فایل‌های قدیمی‌تر از ۲۴ ساعت در هر job به‌صورت best-effort حذف می‌شوند؛ پس از ارسال موفق، فایل همان نوبت پاک می‌شود.
-- اگر روی سرور خطای **۳۰۲** یا محدودیت زیاد دیدید، اینستاگرام اغلب IP/ربات را تشخیص می‌دهد؛ اختیاری: `INSTAGRAM_SESSION_ID` (کوکی `sessionid` از مرورگر لاگین‌شده) در `.env` — **هرگز commit نکنید**.
+- اسکرپ ابتدا از API وب `web_profile_info` با هدر شبیه مرورگر استفاده می‌کند، سپس در صورت خطا به `scraper-instagram` برمی‌گردد.
+- اگر **۳۰۲** یا مسدودیت دارید: هم‌زمان `INSTAGRAM_SESSION_ID` و `INSTAGRAM_CSRF_TOKEN` را از کوکی‌های همان مرورگر بگذارید؛ در صورت نیاز **`INSTAGRAM_HTTPS_PROXY`** (ترجیحاً residential). IP دیتاسنتر اغلب بلاک می‌شود — **هرگز این مقادیر را commit نکنید**.
 
 ## Production Notes
 

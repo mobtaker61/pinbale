@@ -40,12 +40,25 @@ export async function processInstagramJob(
   const cacheDir = join(root, CACHE_SUBDIR);
 
   const maxPosts = deps.config.INSTAGRAM_MAX_POSTS;
-  const scraper = new InstagramScraper(maxPosts, deps.config.INSTAGRAM_SESSION_ID);
+  const scraper = new InstagramScraper(maxPosts, {
+    sessionId: deps.config.INSTAGRAM_SESSION_ID,
+    csrfToken: deps.config.INSTAGRAM_CSRF_TOKEN,
+    proxyUrl: deps.config.INSTAGRAM_HTTPS_PROXY
+  });
   const downloader = new InstagramDownloader();
 
   deps.logger.info(
-    { requestId, instagramUsername, chatId, platform, maxPosts },
-    'instagram job: start scrape'
+    {
+      requestId,
+      instagramUsername,
+      chatId,
+      platform,
+      maxPosts,
+      hasSession: Boolean(deps.config.INSTAGRAM_SESSION_ID),
+      hasCsrf: Boolean(deps.config.INSTAGRAM_CSRF_TOKEN),
+      hasProxy: Boolean(deps.config.INSTAGRAM_HTTPS_PROXY)
+    },
+    'instagram job: start scrape (web_profile_info سپس fallback کتابخانه)'
   );
 
   try {

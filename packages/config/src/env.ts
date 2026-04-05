@@ -71,7 +71,11 @@ const EnvSchema = z
    * کوکی `sessionid` مرورگر پس از ورود به instagram.com — اختیاری؛ گاهی بدون آن اینستاگرام 302/مسدود می‌کند.
    * هرگز در git کامیت نکنید.
    */
-  INSTAGRAM_SESSION_ID: z.string().optional()
+  INSTAGRAM_SESSION_ID: z.string().optional(),
+  /** همراه sessionid؛ از همان Cookies در DevTools (نام `csrftoken`) */
+  INSTAGRAM_CSRF_TOKEN: z.string().optional(),
+  /** خروجی ترافیک اینستاگرام از IP دیگر؛ مثال `http://user:pass@host:8888` (ترجیحاً residential) */
+  INSTAGRAM_HTTPS_PROXY: z.string().optional()
   })
   .superRefine((data, ctx) => {
     const hasBale = Boolean(data.BALE_BOT_TOKEN?.trim());
