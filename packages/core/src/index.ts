@@ -1,4 +1,5 @@
 export * from './models.js';
+export * from './platform.js';
 export * from './interfaces.js';
 export * from './errors.js';
 export * from './search-utils.js';

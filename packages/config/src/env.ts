@@ -1,16 +1,29 @@
 import { z } from 'zod';
 import { loadEnvFiles } from './load-env.js';
 
-const EnvSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  PORT: z.coerce.number().default(3000),
-  LOG_LEVEL: z.string().default('info'),
+function splitIdList(raw: string | undefined): string[] {
+  if (!raw?.trim()) return [];
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
-  REDIS_URL: z.string().min(1),
+const EnvSchema = z
+  .object({
+    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    PORT: z.coerce.number().default(3000),
+    LOG_LEVEL: z.string().default('info'),
 
-  BALE_BOT_TOKEN: z.string().min(1),
-  BALE_WEBHOOK_SECRET: z.string().optional(),
-  BALE_API_BASE_URL: z.string().url().optional(),
+    REDIS_URL: z.string().min(1),
+
+    BALE_BOT_TOKEN: z.string().optional(),
+    BALE_WEBHOOK_SECRET: z.string().optional(),
+    BALE_API_BASE_URL: z.string().url().optional(),
+
+    TELEGRAM_BOT_TOKEN: z.string().optional(),
+    TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
+    TELEGRAM_API_BASE_URL: z.string().url().optional(),
   PUBLIC_BASE_URL: z.string().url().optional(),
 
   PINTEREST_PROVIDER_MODE: z.enum(['official', 'playwright', 'hybrid']).default('hybrid'),
@@ -42,16 +55,31 @@ const EnvSchema = z.object({
   QUEUE_GLOBAL_RATE_LIMIT_DURATION_MS: z.coerce.number().default(60000),
 
   ADMIN_TOKEN: z.string().min(1),
+  /** اگر خالی باشد برای آن پلتفرم محدودیتی نیست؛ در غیر این صورت فقط این شناسه‌ها */
   ALLOWLIST_USER_IDS: z.string().optional(),
+  ALLOWLIST_BALE_USER_IDS: z.string().optional(),
+  ALLOWLIST_TELEGRAM_USER_IDS: z.string().optional(),
   BANNED_KEYWORDS: z.string().optional(),
 
   /** مسیر نسبت به cwd سرویس (مثلاً ریشهٔ monorepo یا /app در داکر) */
   LOCAL_IMAGES_DIR: z.string().default('images'),
   LOCAL_IMAGES_PER_REQUEST: z.coerce.number().min(1).max(50).default(10)
-});
+  })
+  .superRefine((data, ctx) => {
+    const hasBale = Boolean(data.BALE_BOT_TOKEN?.trim());
+    const hasTg = Boolean(data.TELEGRAM_BOT_TOKEN?.trim());
+    if (!hasBale && !hasTg) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'حداقل یکی از BALE_BOT_TOKEN یا TELEGRAM_BOT_TOKEN باید مقدار داشته باشد.'
+      });
+    }
+  });
 
 export type AppConfig = z.infer<typeof EnvSchema> & {
-  allowlistUserIds: string[];
+  allowlistBaleUserIds: string[];
+  allowlistTelegramUserIds: string[];
   bannedKeywords: string[];
 };
 
@@ -66,16 +94,19 @@ export function getConfig(): AppConfig {
   } catch (err) {
     if (err instanceof z.ZodError) {
       console.error(
-        'خطای پیکربندی: فایل .env را در ریشهٔ پروژه بسازید (مثلاً با کپی از .env.example) و حداقل REDIS_URL، BALE_BOT_TOKEN و ADMIN_TOKEN را مقداردهی کنید.'
+        'خطای پیکربندی: فایل .env را در ریشهٔ پروژه بسازید (مثلاً با کپی از .env.example) و حداقل REDIS_URL، یکی از BALE_BOT_TOKEN یا TELEGRAM_BOT_TOKEN، و ADMIN_TOKEN را مقداردهی کنید.'
       );
     }
     throw err;
   }
+  const legacyAllow = splitIdList(parsed.ALLOWLIST_USER_IDS);
+  const baleOnly = splitIdList(parsed.ALLOWLIST_BALE_USER_IDS);
+  const telegramOnly = splitIdList(parsed.ALLOWLIST_TELEGRAM_USER_IDS);
+
   cached = {
     ...parsed,
-    allowlistUserIds: parsed.ALLOWLIST_USER_IDS
-      ? parsed.ALLOWLIST_USER_IDS.split(',').map((i) => i.trim())
-      : [],
+    allowlistBaleUserIds: baleOnly.length > 0 ? baleOnly : legacyAllow,
+    allowlistTelegramUserIds: telegramOnly.length > 0 ? telegramOnly : legacyAllow,
     bannedKeywords: parsed.BANNED_KEYWORDS
       ? parsed.BANNED_KEYWORDS.split(',').map((i) => i.trim().toLowerCase())
       : []

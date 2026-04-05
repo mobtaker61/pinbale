@@ -1,3 +1,5 @@
+import type { MessengerPlatform } from './platform.js';
+
 export const CACHE_KEYS = {
   search: (normalizedQuery: string) => `search:${normalizedQuery}`,
   negativeSearch: (normalizedQuery: string) => `search:negative:${normalizedQuery}`,
@@ -8,10 +10,12 @@ export const CACHE_KEYS = {
   ipRateMinute: (ip: string) => `rate:ip:${ip}`,
   idempotency: (key: string) => `idempotency:${key}`,
   /** لیست پوشه‌های انتخاب‌شده برای /list (چند دقیقه) */
-  folderPick: (userId: string) => `folderPick:${userId}`,
+  folderPick: (platform: MessengerPlatform, userId: string) =>
+    `folderPick:${platform}:${userId}`,
   /** آخرین موضوع ارسال مواد یا تصاویر برای دکمهٔ «دوباره» */
-  lastMaterialsTopic: (userId: string) => `materials:lastTopic:${userId}`,
+  lastMaterialsTopic: (platform: MessengerPlatform, userId: string) =>
+    `materials:lastTopic:${platform}:${userId}`,
   /** آخرین شمارهٔ تصویر ارسال‌شده به این کاربر در این موضوع (نام فایل عددی مثل 00042.jpg) */
-  materialsSequentialCursor: (userId: string, topic: string) =>
-    `materials:seq:${userId}:${topic.replaceAll(':', '_')}`
+  materialsSequentialCursor: (platform: MessengerPlatform, userId: string, topic: string) =>
+    `materials:seq:${platform}:${userId}:${topic.replaceAll(':', '_')}`
 } as const;

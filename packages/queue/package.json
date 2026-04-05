@@ -8,6 +8,7 @@
     "build": "tsup src/index.ts --format esm --out-dir dist --external bullmq"
   },
   "dependencies": {
-    "@pinbale/cache": "*"
+    "@pinbale/cache": "*",
+    "@pinbale/core": "*"
   }
 }

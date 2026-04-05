@@ -3,6 +3,9 @@ import { createLogger } from '@pinbale/observability';
 import { createRedisClient, RateLimitService, RedisCacheService, SessionService } from '@pinbale/cache';
 import { createQueues } from '@pinbale/queue';
 import { BaleAdapter, BaleClient } from '@pinbale/bale';
+import type { MessengerPlatform } from '@pinbale/core';
+
+export type MessengerAdapters = Partial<Record<MessengerPlatform, BaleAdapter>>;
 
 export function buildContainer() {
   const config = getConfig();
@@ -16,11 +19,20 @@ export function buildContainer() {
     config.QUEUE_GLOBAL_RATE_LIMIT_MAX,
     config.QUEUE_GLOBAL_RATE_LIMIT_DURATION_MS
   );
-  const baleClient = new BaleClient(
-    config.BALE_BOT_TOKEN,
-    config.BALE_API_BASE_URL ?? 'https://tapi.bale.ai/bot'
-  );
-  const bale = new BaleAdapter(baleClient);
+
+  const messengers: MessengerAdapters = {};
+  const baleToken = config.BALE_BOT_TOKEN?.trim();
+  if (baleToken) {
+    messengers.bale = new BaleAdapter(
+      new BaleClient(baleToken, config.BALE_API_BASE_URL ?? 'https://tapi.bale.ai/bot')
+    );
+  }
+  const tgToken = config.TELEGRAM_BOT_TOKEN?.trim();
+  if (tgToken) {
+    messengers.telegram = new BaleAdapter(
+      new BaleClient(tgToken, config.TELEGRAM_API_BASE_URL ?? 'https://api.telegram.org/bot')
+    );
+  }
 
   return {
     config,
@@ -30,6 +42,6 @@ export function buildContainer() {
     sessionService,
     rateLimitService,
     queues,
-    bale
+    messengers
   };
 }
