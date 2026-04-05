@@ -8,8 +8,8 @@ import { isSafeTopicFolderName, resolveLocalImageDirs } from '@pinbale/core';
 /** فقط نام فایل بدون مسیر؛ جلوگیری از path traversal */
 const SAFE_BASENAME = /^[a-zA-Z0-9._-]+\.(jpe?g|png|webp|gif)$/i;
 
-/** کش اینستاگرام: `{username}_{timestamp}_{index}.jpg` */
-const SAFE_INSTAGRAM_CACHE = /^[a-zA-Z0-9._-]+\.jpe?g$/i;
+/** کش اینستاگرام: `{username}_{timestamp}_{index}.jpg|.mp4` */
+const SAFE_INSTAGRAM_CACHE = /^[a-zA-Z0-9._-]+\.(jpe?g|mp4)$/i;
 
 const MediaQuerySchema = z.object({
   from: z.string().optional()
@@ -86,7 +86,9 @@ export async function registerLocalMediaRoutes(app: FastifyInstance) {
       return reply.code(404).send({ message: 'Not found' });
     }
 
-    reply.header('Content-Type', 'image/jpeg');
+    const lower = raw.toLowerCase();
+    const mime = lower.endsWith('.mp4') ? 'video/mp4' : 'image/jpeg';
+    reply.header('Content-Type', mime);
     reply.header('Cache-Control', 'public, max-age=120');
     return reply.send(createReadStream(abs));
   });

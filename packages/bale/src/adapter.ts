@@ -55,6 +55,14 @@ export class BaleAdapter {
     await this.client.sendPhoto({ chatId, photoUrl, caption });
   }
 
+  async sendVideoByUrl(chatId: string, videoUrl: string, caption?: string) {
+    await this.client.sendVideo({ chatId, videoUrl, caption });
+  }
+
+  async sendVideoFromFile(chatId: string, filePath: string, caption?: string) {
+    await this.client.sendVideoFromFile({ chatId, filePath, caption });
+  }
+
   async sendResultWithOptionalPhoto(chatId: string, text: string, imageUrl?: string | null) {
     if (!imageUrl) {
       await this.sendText(chatId, text);

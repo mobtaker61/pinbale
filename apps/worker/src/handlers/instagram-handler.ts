@@ -112,35 +112,39 @@ export async function processInstagramJob(
       return;
     }
 
-    const paths = await downloader.downloadAndSave(posts, cacheDir, instagramUsername);
-    if (paths.length === 0) {
+    const downloaded = await downloader.downloadAndSave(posts, cacheDir, instagramUsername);
+    if (downloaded.length === 0) {
       await bot.sendText(chatId, faMessages.instagramNoPosts);
       return;
     }
 
     deps.logger.info(
-      { requestId, count: paths.length },
-      'instagram job: downloaded, sending photos'
+      { requestId, count: downloaded.length },
+      'instagram job: downloaded, sending media'
     );
 
-    for (let i = 0; i < paths.length; i++) {
-      const filePath = paths[i]!;
-      const caption = posts[i]?.caption?.slice(0, 900) ?? undefined;
+    for (const dm of downloaded) {
       try {
-        const publicUrl = buildPublicInstagramImageUrl(deps.config, filePath, instagramUsername);
-        if (publicUrl) {
-          await bot.sendPhotoByUrl(chatId, publicUrl, caption);
+        const publicUrl = buildPublicInstagramMediaUrl(deps.config, dm.path, instagramUsername);
+        if (dm.kind === 'video') {
+          if (publicUrl) {
+            await bot.sendVideoByUrl(chatId, publicUrl, dm.caption);
+          } else {
+            await bot.sendVideoFromFile(chatId, dm.path, dm.caption);
+          }
+        } else if (publicUrl) {
+          await bot.sendPhotoByUrl(chatId, publicUrl, dm.caption);
         } else {
-          await bot.sendPhotoFromFile(chatId, filePath, caption);
+          await bot.sendPhotoFromFile(chatId, dm.path, dm.caption);
         }
       } catch (err) {
         deps.logger.warn(
-          { err: err instanceof Error ? err.message : err, requestId, filePath },
-          'instagram job: send one photo failed'
+          { err: err instanceof Error ? err.message : err, requestId, filePath: dm.path },
+          'instagram job: send one media failed'
         );
       } finally {
         try {
-          await unlink(filePath);
+          await unlink(dm.path);
         } catch {
           /* ignore */
         }
@@ -170,7 +174,7 @@ export async function processInstagramJob(
   }
 }
 
-function buildPublicInstagramImageUrl(
+function buildPublicInstagramMediaUrl(
   cfg: AppConfig,
   filePath: string,
   username: string

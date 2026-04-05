@@ -8,6 +8,7 @@ import {
 } from './errors.js';
 import { fetchPostsViaWebProfile, type WebProfileFetchOptions } from './web-profile-fetch.js';
 import { normalizeHttpProxyUrl } from './proxy-url.js';
+import { getMediaItemsForPost } from './media-items.js';
 
 const require = createRequire(import.meta.url);
 
@@ -54,9 +55,9 @@ export class InstagramScraper {
   async fetchUserPosts(username: string): Promise<InstagramPost[]> {
     try {
       const posts = await fetchPostsViaWebProfile(username, this.maxPosts, this.fetchOpts);
-      const withImage = posts.filter((p) => p.imageUrl);
-      if (withImage.length > 0) {
-        return withImage;
+      const withMedia = posts.filter((p) => getMediaItemsForPost(p).length > 0);
+      if (withMedia.length > 0) {
+        return withMedia;
       }
       if (posts.length === 0) {
         return [];
@@ -122,11 +123,13 @@ export class InstagramScraper {
     thumbnail: string;
     timestamp: number;
   }): InstagramPost {
+    const thumb = p.thumbnail ?? null;
     return {
       id: p.shortcode,
       caption: p.caption,
-      imageUrl: p.thumbnail ?? null,
+      imageUrl: thumb,
       videoUrl: null,
+      items: thumb ? [{ kind: 'image' as const, url: thumb }] : [],
       likes: typeof p.likes === 'number' ? p.likes : 0,
       timestamp: typeof p.timestamp === 'number' ? p.timestamp : 0
     };

@@ -23,6 +23,18 @@ type SendPhotoFileParams = {
   caption?: string;
 };
 
+type SendVideoParams = {
+  chatId: string;
+  videoUrl: string;
+  caption?: string;
+};
+
+type SendVideoFileParams = {
+  chatId: string;
+  filePath: string;
+  caption?: string;
+};
+
 export class BaleClient {
   constructor(
     private readonly token: string,
@@ -92,6 +104,47 @@ export class BaleClient {
   }
 
   /** ارسال عکس به‌صورت multipart (مثل API تلگرام/بله). */
+  async sendVideo(params: SendVideoParams): Promise<void> {
+    await this.withRetry(async () => {
+      const { statusCode } = await request(`${this.endpoint}/sendVideo`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: params.chatId,
+          video: params.videoUrl,
+          caption: params.caption,
+          supports_streaming: true
+        }),
+        headersTimeout: this.timeoutMs,
+        bodyTimeout: this.timeoutMs
+      });
+      if (statusCode >= 400) throw new BaleDeliveryError(`sendVideo failed with ${statusCode}`);
+    });
+  }
+
+  async sendVideoFromFile(params: SendVideoFileParams): Promise<void> {
+    const buf = await readFile(params.filePath);
+    const filename = basename(params.filePath);
+    const form = new FormData();
+    form.append('chat_id', params.chatId);
+    form.append('video', new Blob([buf]), filename);
+    if (params.caption) form.append('caption', params.caption);
+
+    const uploadTimeout = Math.max(this.timeoutMs, 120_000);
+
+    await this.withRetry(async () => {
+      const { statusCode } = await request(`${this.endpoint}/sendVideo`, {
+        method: 'POST',
+        body: form,
+        headersTimeout: uploadTimeout,
+        bodyTimeout: uploadTimeout
+      });
+      if (statusCode >= 400) {
+        throw new BaleDeliveryError(`sendVideoFromFile failed with ${statusCode}`);
+      }
+    });
+  }
+
   async sendPhotoFromFile(params: SendPhotoFileParams): Promise<void> {
     const buf = await readFile(params.filePath);
     const filename = basename(params.filePath);

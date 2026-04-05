@@ -1,5 +1,5 @@
 import { fetch, ProxyAgent } from 'undici';
-import type { InstagramPost } from './types.js';
+import type { InstagramMediaItem, InstagramPost } from './types.js';
 import {
   InstagramNotFoundError,
   InstagramPrivateError,
@@ -120,7 +120,7 @@ export async function fetchPostsViaWebProfile(
           await sleep(backoffMs(attempt, baseMs, Number.isFinite(sec) ? sec : undefined));
           continue;
         }
-        throw new InstagramScraperError('web_profile_info: rate limit', 429);
+        throw new InstagramScraperError('web_profile_info: rate limit [HTTP 429]', 429);
       }
       if (!res.ok) {
         await drainBody(res);
@@ -153,7 +153,7 @@ export async function fetchPostsViaWebProfile(
         throw e;
       }
     }
-    throw new InstagramScraperError('web_profile_info: rate limit', 429);
+    throw new InstagramScraperError('web_profile_info: rate limit [retry exhausted]', 429);
   } finally {
     await dispatcher?.close();
   }
@@ -172,7 +172,7 @@ export function parseWebProfileResponse(data: unknown, maxPosts: number): Instag
       throw new InstagramNotFoundError();
     }
     if (isRateLimitMessage(msg)) {
-      throw new InstagramScraperError(`web_profile_info: ${msg}`, 429);
+      throw new InstagramScraperError(`web_profile_info: rate limit [JSON] ${msg}`, 429);
     }
     throw new InstagramScraperError(`web_profile_info: ${msg}`, 403);
   }
@@ -196,6 +196,65 @@ export function parseWebProfileResponse(data: unknown, maxPosts: number): Instag
   return edges.slice(0, maxPosts).map((edge, i) => mapTimelineNode(edge.node, i));
 }
 
+function pickVideoUrl(n: Record<string, unknown>): string | null {
+  const direct = n.video_url;
+  if (typeof direct === 'string' && direct.startsWith('http')) {
+    return direct;
+  }
+  const vv = n.video_versions as Array<{ url?: string; width?: number }> | undefined;
+  if (vv?.length) {
+    const sorted = [...vv].sort((a, b) => (b.width ?? 0) - (a.width ?? 0));
+    const u = sorted[0]?.url;
+    if (typeof u === 'string' && u.startsWith('http')) return u;
+  }
+  return null;
+}
+
+function mediaItemsFromLeafNode(n: Record<string, unknown>): InstagramMediaItem[] {
+  const typename = String(n.__typename ?? '');
+  const videoUrl = pickVideoUrl(n);
+  const displayUrl = typeof n.display_url === 'string' ? n.display_url : null;
+  const isVideo =
+    n.is_video === true ||
+    typename === 'GraphVideo' ||
+    n.media_type === 2 ||
+    (typeof n.media_type === 'number' && n.media_type === 2);
+
+  if (videoUrl && (isVideo || typename === 'GraphVideo')) {
+    return [{ kind: 'video', url: videoUrl }];
+  }
+  if (videoUrl && !displayUrl) {
+    return [{ kind: 'video', url: videoUrl }];
+  }
+  if (displayUrl) {
+    if (videoUrl && (isVideo || /GraphVideo|Clip/i.test(typename))) {
+      return [{ kind: 'video', url: videoUrl }];
+    }
+    return [{ kind: 'image', url: displayUrl }];
+  }
+  if (videoUrl) {
+    return [{ kind: 'video', url: videoUrl }];
+  }
+  return [];
+}
+
+function mediaItemsFromTimelineNode(n: Record<string, unknown>): InstagramMediaItem[] {
+  const side = n.edge_sidecar_to_children as
+    | { edges?: Array<{ node?: Record<string, unknown> }> }
+    | undefined;
+  const edges = side?.edges;
+  if (edges?.length) {
+    const out: InstagramMediaItem[] = [];
+    for (const e of edges) {
+      if (e.node) {
+        out.push(...mediaItemsFromLeafNode(e.node));
+      }
+    }
+    if (out.length > 0) return out;
+  }
+  return mediaItemsFromLeafNode(n);
+}
+
 function mapTimelineNode(node: Record<string, unknown> | undefined, _index: number): InstagramPost {
   if (!node) {
     return {
@@ -203,6 +262,7 @@ function mapTimelineNode(node: Record<string, unknown> | undefined, _index: numb
       caption: null,
       imageUrl: null,
       videoUrl: null,
+      items: [],
       likes: 0,
       timestamp: 0
     };
@@ -230,11 +290,22 @@ function mapTimelineNode(node: Record<string, unknown> | undefined, _index: numb
         ? node.taken_at
         : 0;
 
+  const rawItems = mediaItemsFromTimelineNode(node);
+  const items: InstagramMediaItem[] =
+    rawItems.length > 0
+      ? rawItems
+      : displayUrl
+        ? [{ kind: 'image', url: displayUrl }]
+        : [];
+  const firstVideo = items.find((i) => i.kind === 'video');
+  const firstImage = items.find((i) => i.kind === 'image');
+
   return {
     id: shortcode,
     caption,
-    imageUrl: displayUrl,
-    videoUrl: null,
+    imageUrl: firstImage?.url ?? displayUrl,
+    videoUrl: firstVideo?.url ?? null,
+    items,
     likes,
     timestamp: ts
   };
