@@ -7,8 +7,9 @@ coverage
 playwright-artifacts
 *.log
 
- cloudflared.deb
- 
+# نصب‌کننده‌های موقت در ریشهٔ پروژه
+*.deb
+
 # تصاویر محلی ربات (آپلود دستی؛ در ریپو نمی‌رود)
 images/*
 !images/.gitkeep
