@@ -47,6 +47,7 @@ export class BaleClient {
   }
 
   async sendMessage(params: SendMessageParams): Promise<void> {
+    const t = this.timeoutMs;
     await this.withRetry(async () => {
       const body: Record<string, unknown> = { chat_id: params.chatId, text: params.text };
       if (params.replyMarkup) {
@@ -56,8 +57,9 @@ export class BaleClient {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
-        headersTimeout: this.timeoutMs,
-        bodyTimeout: this.timeoutMs
+        headersTimeout: t,
+        bodyTimeout: t,
+        signal: AbortSignal.timeout(t + 2000)
       });
       if (statusCode >= 400) throw new BaleDeliveryError(`sendMessage failed with ${statusCode}`);
     });
@@ -69,6 +71,7 @@ export class BaleClient {
     showAlert?: boolean;
   }): Promise<void> {
     await this.withRetry(async () => {
+      const t = this.timeoutMs;
       const { statusCode } = await request(`${this.endpoint}/answerCallbackQuery`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -77,8 +80,9 @@ export class BaleClient {
           text: params.text,
           show_alert: params.showAlert ?? false
         }),
-        headersTimeout: this.timeoutMs,
-        bodyTimeout: this.timeoutMs
+        headersTimeout: t,
+        bodyTimeout: t,
+        signal: AbortSignal.timeout(t + 2000)
       });
       if (statusCode >= 400) {
         throw new BaleDeliveryError(`answerCallbackQuery failed with ${statusCode}`);
@@ -98,7 +102,8 @@ export class BaleClient {
           caption: params.caption
         }),
         headersTimeout: urlFetchTimeout,
-        bodyTimeout: urlFetchTimeout
+        bodyTimeout: urlFetchTimeout,
+        signal: AbortSignal.timeout(urlFetchTimeout + 5000)
       });
       if (statusCode >= 400) throw new BaleDeliveryError(`sendPhoto failed with ${statusCode}`);
     });
@@ -118,28 +123,30 @@ export class BaleClient {
           supports_streaming: true
         }),
         headersTimeout: urlFetchTimeout,
-        bodyTimeout: urlFetchTimeout
+        bodyTimeout: urlFetchTimeout,
+        signal: AbortSignal.timeout(urlFetchTimeout + 5000)
       });
       if (statusCode >= 400) throw new BaleDeliveryError(`sendVideo failed with ${statusCode}`);
     });
   }
 
   async sendVideoFromFile(params: SendVideoFileParams): Promise<void> {
-    const buf = await readFile(params.filePath);
+    const uploadTimeout = Math.max(this.timeoutMs, 300_000);
     const filename = basename(params.filePath);
-    const form = new FormData();
-    form.append('chat_id', params.chatId);
-    form.append('video', new Blob([buf]), filename);
-    if (params.caption) form.append('caption', params.caption);
 
-    const uploadTimeout = Math.max(this.timeoutMs, 120_000);
+    await this.withRetryUpload(async () => {
+      const buf = await readFile(params.filePath);
+      const form = new FormData();
+      form.append('chat_id', params.chatId);
+      form.append('video', new Blob([buf]), filename);
+      if (params.caption) form.append('caption', params.caption);
 
-    await this.withRetry(async () => {
       const { statusCode } = await request(`${this.endpoint}/sendVideo`, {
         method: 'POST',
         body: form,
         headersTimeout: uploadTimeout,
-        bodyTimeout: uploadTimeout
+        bodyTimeout: uploadTimeout,
+        signal: AbortSignal.timeout(uploadTimeout + 15_000)
       });
       if (statusCode >= 400) {
         throw new BaleDeliveryError(`sendVideoFromFile failed with ${statusCode}`);
@@ -148,21 +155,22 @@ export class BaleClient {
   }
 
   async sendPhotoFromFile(params: SendPhotoFileParams): Promise<void> {
-    const buf = await readFile(params.filePath);
+    const uploadTimeout = Math.max(this.timeoutMs, 180_000);
     const filename = basename(params.filePath);
-    const form = new FormData();
-    form.append('chat_id', params.chatId);
-    form.append('photo', new Blob([buf]), filename);
-    if (params.caption) form.append('caption', params.caption);
 
-    const uploadTimeout = Math.max(this.timeoutMs, 90_000);
+    await this.withRetryUpload(async () => {
+      const buf = await readFile(params.filePath);
+      const form = new FormData();
+      form.append('chat_id', params.chatId);
+      form.append('photo', new Blob([buf]), filename);
+      if (params.caption) form.append('caption', params.caption);
 
-    await this.withRetry(async () => {
       const { statusCode } = await request(`${this.endpoint}/sendPhoto`, {
         method: 'POST',
         body: form,
         headersTimeout: uploadTimeout,
-        bodyTimeout: uploadTimeout
+        bodyTimeout: uploadTimeout,
+        signal: AbortSignal.timeout(uploadTimeout + 15_000)
       });
       if (statusCode >= 400) {
         throw new BaleDeliveryError(`sendPhotoFromFile failed with ${statusCode}`);
@@ -181,6 +189,22 @@ export class BaleClient {
         attempt += 1;
         if (attempt >= maxAttempt) throw error;
         await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
+      }
+    }
+  }
+
+  /** آپلود multipart کمتر تکرار می‌شود تا حداکثر زمان انتظار انفجار نکند */
+  private async withRetryUpload(fn: () => Promise<void>) {
+    let attempt = 0;
+    const maxAttempt = 2;
+    while (attempt < maxAttempt) {
+      try {
+        await fn();
+        return;
+      } catch (error) {
+        attempt += 1;
+        if (attempt >= maxAttempt) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 800 * attempt));
       }
     }
   }

@@ -98,6 +98,7 @@ new Worker<MaterialsJobPayload>(
       return;
     }
 
+    try {
     const rawTopic = job.data.sourceSubfolder;
     const topic =
       rawTopic && isSafeTopicFolderName(rawTopic) ? rawTopic : undefined;
@@ -265,26 +266,83 @@ new Worker<MaterialsJobPayload>(
     }
 
     if (topic && topicPathToNum) {
-      await redis.set(cursorKey, String(cursorAfter));
+      try {
+        await redis.set(cursorKey, String(cursorAfter));
+      } catch (cursorErr) {
+        logger.warn(
+          {
+            err: cursorErr instanceof Error ? cursorErr.message : cursorErr,
+            requestId,
+            cursorKey
+          },
+          'materials job: redis cursor save failed (ادامهٔ job)'
+        );
+      }
     }
 
     logger.info({ requestId, successCount, anyFailed }, 'materials job: loop finished');
 
-    await cacheSvc.set(
-      CACHE_KEYS.lastMaterialsTopic(platform, userId),
-      { sourceSubfolder: topic ?? null },
-      86_400
-    );
-
-    if (anyFailed) {
-      await bot.sendText(chatId, faMessages.materialsSendFailed);
+    try {
+      await cacheSvc.set(
+        CACHE_KEYS.lastMaterialsTopic(platform, userId),
+        { sourceSubfolder: topic ?? null },
+        86_400
+      );
+    } catch (cacheErr) {
+      logger.warn(
+        {
+          err: cacheErr instanceof Error ? cacheErr.message : cacheErr,
+          requestId
+        },
+        'materials job: cacheSvc.set lastMaterialsTopic failed (ادامهٔ job)'
+      );
     }
 
-    if (successCount > 0) {
-      if (sequenceWrapped) {
-        await bot.sendText(chatId, faMessages.materialsSequenceWrapped);
+    try {
+      if (anyFailed) {
+        await bot.sendText(chatId, faMessages.materialsSendFailed);
       }
-      await bot.sendMaterialsBatchDoneKeyboard(chatId, faMessages.materialsBatchDone);
+
+      if (successCount > 0) {
+        if (sequenceWrapped) {
+          await bot.sendText(chatId, faMessages.materialsSequenceWrapped);
+        }
+        await bot.sendMaterialsBatchDoneKeyboard(chatId, faMessages.materialsBatchDone);
+      }
+    } catch (notifyErr) {
+      logger.warn(
+        {
+          err: notifyErr instanceof Error ? notifyErr.message : notifyErr,
+          requestId,
+          chatId
+        },
+        'materials job: اعلان به کاربر ناموفق — job در صف تکمیل شد'
+      );
+    }
+    } catch (fatal) {
+      logger.error(
+        {
+          err:
+            fatal instanceof Error
+              ? { message: fatal.message, stack: fatal.stack }
+              : fatal,
+          requestId,
+          jobId: job.id,
+          platform,
+          chatId
+        },
+        'materials job: خطای غیرمنتظره در handler'
+      );
+      try {
+        await bot.sendText(chatId, faMessages.materialsSendFailed);
+      } catch {
+        /* ignore */
+      }
+    } finally {
+      logger.info(
+        { requestId, jobId: job.id, platform },
+        'materials job: handler finished (صفر یا چند عکس؛ worker آمادهٔ job بعدی)'
+      );
     }
   },
   { connection: redis, concurrency: 1 }
