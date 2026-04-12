@@ -232,7 +232,16 @@ new Worker<MaterialsJobPayload>(
               },
               'materials job: sendPhotoByUrl failed, multipart fallback'
             );
+            const fallbackStartedAt = Date.now();
+            logger.info(
+              { requestId, filePath },
+              'materials job: fallback sendPhotoFromFile started'
+            );
             await bot.sendPhotoFromFile(chatId, filePath);
+            logger.info(
+              { requestId, filePath, tookMs: Date.now() - fallbackStartedAt },
+              'materials job: fallback sendPhotoFromFile finished'
+            );
           }
         } else {
           logger.info(

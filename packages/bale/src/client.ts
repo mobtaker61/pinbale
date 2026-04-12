@@ -91,7 +91,7 @@ export class BaleClient {
   }
 
   async sendPhoto(params: SendPhotoParams): Promise<void> {
-    const urlFetchTimeout = Math.max(this.timeoutMs, 90_000);
+    const urlFetchTimeout = Math.max(this.timeoutMs, 25_000);
     await this.withRetry(async () => {
       const { statusCode } = await request(`${this.endpoint}/sendPhoto`, {
         method: 'POST',
@@ -111,7 +111,7 @@ export class BaleClient {
 
   /** ارسال عکس به‌صورت multipart (مثل API تلگرام/بله). */
   async sendVideo(params: SendVideoParams): Promise<void> {
-    const urlFetchTimeout = Math.max(this.timeoutMs, 120_000);
+    const urlFetchTimeout = Math.max(this.timeoutMs, 40_000);
     await this.withRetry(async () => {
       const { statusCode } = await request(`${this.endpoint}/sendVideo`, {
         method: 'POST',
@@ -131,7 +131,7 @@ export class BaleClient {
   }
 
   async sendVideoFromFile(params: SendVideoFileParams): Promise<void> {
-    const uploadTimeout = Math.max(this.timeoutMs, 300_000);
+    const uploadTimeout = Math.max(this.timeoutMs, 120_000);
     const filename = basename(params.filePath);
 
     await this.withRetryUpload(async () => {
@@ -155,7 +155,7 @@ export class BaleClient {
   }
 
   async sendPhotoFromFile(params: SendPhotoFileParams): Promise<void> {
-    const uploadTimeout = Math.max(this.timeoutMs, 180_000);
+    const uploadTimeout = Math.max(this.timeoutMs, 45_000);
     const filename = basename(params.filePath);
 
     await this.withRetryUpload(async () => {
@@ -186,6 +186,7 @@ export class BaleClient {
         await fn();
         return;
       } catch (error) {
+        if (!shouldRetryError(error)) throw error;
         attempt += 1;
         if (attempt >= maxAttempt) throw error;
         await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
@@ -202,10 +203,29 @@ export class BaleClient {
         await fn();
         return;
       } catch (error) {
+        if (!shouldRetryError(error)) throw error;
         attempt += 1;
         if (attempt >= maxAttempt) throw error;
         await new Promise((resolve) => setTimeout(resolve, 800 * attempt));
       }
     }
   }
+}
+
+function shouldRetryError(error: unknown): boolean {
+  if (!(error instanceof Error)) return true;
+  const status = extractHttpStatusFromMessage(error.message);
+  if (status !== null) {
+    if (status === 408 || status === 429) return true;
+    if (status >= 500) return true;
+    return false;
+  }
+  return true;
+}
+
+function extractHttpStatusFromMessage(message: string): number | null {
+  const match = /failed with (\d{3})/.exec(message);
+  if (!match) return null;
+  const status = Number.parseInt(match[1], 10);
+  return Number.isFinite(status) ? status : null;
 }
