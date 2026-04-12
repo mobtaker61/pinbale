@@ -1,5 +1,5 @@
 import { basename, join } from 'node:path';
-import { unlink } from 'node:fs/promises';
+import { mkdir, unlink } from 'node:fs/promises';
 import type { Job } from 'bullmq';
 import type { AppConfig } from '@pinbale/config';
 import type { Logger } from 'pino';
@@ -161,10 +161,18 @@ export async function processInstagramJob(
     }
 
     if (rapidKey && deps.config.INSTAGRAM_RAPIDAPI_MESSENGER_FETCH_MEDIA) {
-      const sent = await sendRapidApiPostsByMessengerUrls(bot, chatId, posts, {
-        requestId,
-        logger: deps.logger
-      });
+      const sent = await sendRapidApiPostsByMessengerUrls(
+        bot,
+        chatId,
+        posts,
+        downloader,
+        cacheDir,
+        instagramUsername,
+        {
+          requestId,
+          logger: deps.logger
+        }
+      );
       if (!sent) {
         await bot.sendText(chatId, faMessages.instagramError);
       }
@@ -229,51 +237,134 @@ export async function processInstagramJob(
   }
 }
 
-/** بدون دانلود روی worker: URL را به تلگرام/بله می‌دهیم تا خودشان از CDN بگیرند. */
+/**
+ * ترکیبی: عکس ابتدا با URL به تلگرام/بله؛ ویدیو ابتدا دانلود روی worker + ارسال فایل
+ * (CDN ویدیوی IG معمولاً با sendVideo(URL) روی API تلگرام 400 می‌دهد).
+ */
 async function sendRapidApiPostsByMessengerUrls(
   bot: BaleAdapter,
   chatId: string,
   posts: InstagramPost[],
+  downloader: InstagramDownloader,
+  cacheDir: string,
+  instagramUsername: string,
   ctx: { requestId: string; logger: Logger }
 ): Promise<boolean> {
+  await mkdir(cacheDir, { recursive: true });
+  const batchTs = Date.now();
   let ok = 0;
   let fail = 0;
+  let mediaIndex = 0;
+
+  const mediaHost = (url: string) => {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return '(bad-url)';
+    }
+  };
+
+  const sendAfterLocalDownload = async (
+    item: { kind: 'image' | 'video'; url: string },
+    cap: string | undefined,
+    host: string
+  ): Promise<boolean> => {
+    mediaIndex += 1;
+    const ext = item.kind === 'video' ? 'mp4' : 'jpg';
+    const dest = join(cacheDir, `${instagramUsername}_rapid_${batchTs}_${mediaIndex}.${ext}`);
+    try {
+      await downloader.downloadMediaToFile(item.url, dest, item.kind);
+    } catch (dlErr) {
+      ctx.logger.warn(
+        {
+          err: dlErr instanceof Error ? dlErr.message : dlErr,
+          requestId: ctx.requestId,
+          mediaHost: host,
+          kind: item.kind
+        },
+        'instagram job: دانلود مدیا از CDN برای ارسال فایلی ناموفق'
+      );
+      return false;
+    }
+    try {
+      if (item.kind === 'video') {
+        await bot.sendVideoFromFile(chatId, dest, cap);
+      } else {
+        await bot.sendPhotoFromFile(chatId, dest, cap);
+      }
+      ok += 1;
+      return true;
+    } catch (sendErr) {
+      ctx.logger.warn(
+        {
+          err: sendErr instanceof Error ? sendErr.message : sendErr,
+          requestId: ctx.requestId,
+          mediaHost: host,
+          kind: item.kind
+        },
+        'instagram job: ارسال فایل محلی (بعد از دانلود) ناموفق'
+      );
+      return false;
+    } finally {
+      try {
+        await unlink(dest);
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+
   for (const post of posts) {
     const items = getMediaItemsForPost(post);
     for (let j = 0; j < items.length; j++) {
       const item = items[j]!;
       const cap = j === 0 ? post.caption?.slice(0, 900) : undefined;
-      const host = (() => {
+      const host = mediaHost(item.url);
+
+      if (item.kind === 'video') {
+        const fileSent = await sendAfterLocalDownload(item, cap, host);
+        if (fileSent) continue;
         try {
-          return new URL(item.url).hostname;
-        } catch {
-          return '(bad-url)';
-        }
-      })();
-      try {
-        if (item.kind === 'video') {
           await bot.sendVideoByUrl(chatId, item.url, cap);
-        } else {
-          await bot.sendPhotoByUrl(chatId, item.url, cap);
+          ok += 1;
+        } catch (err) {
+          fail += 1;
+          ctx.logger.warn(
+            {
+              err: err instanceof Error ? err.message : err,
+              requestId: ctx.requestId,
+              mediaHost: host,
+              kind: 'video'
+            },
+            'instagram job: ویدیو نه با فایل نه با URL ارسال نشد'
+          );
         }
+        continue;
+      }
+
+      try {
+        await bot.sendPhotoByUrl(chatId, item.url, cap);
         ok += 1;
       } catch (err) {
-        fail += 1;
-        ctx.logger.warn(
+        ctx.logger.info(
           {
             err: err instanceof Error ? err.message : err,
             requestId: ctx.requestId,
-            mediaHost: host,
-            kind: item.kind
+            mediaHost: host
           },
-          'instagram job: ارسال یک مدیا با URL شکست خورد (تلگرام/بله نتوانست CDN را بگیرد؟)'
+          'instagram job: عکس با URL ناموفق، تلاش دانلود+فایل'
         );
+        const sent = await sendAfterLocalDownload(item, cap, host);
+        if (!sent) {
+          fail += 1;
+        }
       }
     }
   }
+
   ctx.logger.info(
     { requestId: ctx.requestId, sentOk: ok, sentFailed: fail },
-    'instagram job: پایان ارسال مستقیم با URL'
+    'instagram job: پایان ارسال RapidAPI (URL + fallback فایل)'
   );
   return ok > 0;
 }

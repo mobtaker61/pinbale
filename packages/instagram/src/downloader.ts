@@ -26,6 +26,17 @@ export class InstagramDownloader {
   ) {}
 
   /**
+   * یک مدیا را از URL روی دیسک می‌نویسد (مثلاً وقتی تلگرام/بله نمی‌توانند مستقیم از CDN اینستاگرام بگیرند).
+   */
+  async downloadMediaToFile(
+    url: string,
+    destPath: string,
+    kind: InstagramMediaKind
+  ): Promise<void> {
+    await this.downloadOne(url, destPath, kind);
+  }
+
+  /**
    * فایل‌ها در `cacheDir`: `{username}_{batchTs}_{index}.jpg|mp4`
    */
   async downloadAndSave(
@@ -83,12 +94,23 @@ export class InstagramDownloader {
     let lastErr: unknown;
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
+        const headers: Record<string, string> = {
+          'user-agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          Accept: '*/*'
+        };
+        try {
+          const host = new URL(url).hostname;
+          if (/instagram|fbcdn|cdninstagram/i.test(host)) {
+            headers.Referer = 'https://www.instagram.com/';
+            headers.Origin = 'https://www.instagram.com';
+          }
+        } catch {
+          /* ignore */
+        }
         const res = await fetch(url, {
           method: 'GET',
-          headers: {
-            'user-agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-          },
+          headers,
           signal: AbortSignal.timeout(timeout)
         });
         if (res.status >= 400) {
