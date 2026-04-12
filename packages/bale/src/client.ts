@@ -87,6 +87,7 @@ export class BaleClient {
   }
 
   async sendPhoto(params: SendPhotoParams): Promise<void> {
+    const urlFetchTimeout = Math.max(this.timeoutMs, 90_000);
     await this.withRetry(async () => {
       const { statusCode } = await request(`${this.endpoint}/sendPhoto`, {
         method: 'POST',
@@ -96,8 +97,8 @@ export class BaleClient {
           photo: params.photoUrl,
           caption: params.caption
         }),
-        headersTimeout: this.timeoutMs,
-        bodyTimeout: this.timeoutMs
+        headersTimeout: urlFetchTimeout,
+        bodyTimeout: urlFetchTimeout
       });
       if (statusCode >= 400) throw new BaleDeliveryError(`sendPhoto failed with ${statusCode}`);
     });
@@ -105,6 +106,7 @@ export class BaleClient {
 
   /** ارسال عکس به‌صورت multipart (مثل API تلگرام/بله). */
   async sendVideo(params: SendVideoParams): Promise<void> {
+    const urlFetchTimeout = Math.max(this.timeoutMs, 120_000);
     await this.withRetry(async () => {
       const { statusCode } = await request(`${this.endpoint}/sendVideo`, {
         method: 'POST',
@@ -115,8 +117,8 @@ export class BaleClient {
           caption: params.caption,
           supports_streaming: true
         }),
-        headersTimeout: this.timeoutMs,
-        bodyTimeout: this.timeoutMs
+        headersTimeout: urlFetchTimeout,
+        bodyTimeout: urlFetchTimeout
       });
       if (statusCode >= 400) throw new BaleDeliveryError(`sendVideo failed with ${statusCode}`);
     });

@@ -219,7 +219,20 @@ new Worker<MaterialsJobPayload>(
             { requestId, index: i + 1, of: batch.length, publicUrl },
             'materials job: sendPhoto by public URL (client downloads)'
           );
-          await bot.sendPhotoByUrl(chatId, publicUrl);
+          try {
+            await bot.sendPhotoByUrl(chatId, publicUrl);
+          } catch (urlErr) {
+            logger.warn(
+              {
+                err: urlErr instanceof Error ? urlErr.message : urlErr,
+                requestId,
+                filePath,
+                publicUrl
+              },
+              'materials job: sendPhotoByUrl failed, multipart fallback'
+            );
+            await bot.sendPhotoFromFile(chatId, filePath);
+          }
         } else {
           logger.info(
             { requestId, index: i + 1, of: batch.length, filePath },

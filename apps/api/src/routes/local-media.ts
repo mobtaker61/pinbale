@@ -1,12 +1,19 @@
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
-import { basename, resolve } from 'node:path';
+import { basename, extname, resolve } from 'node:path';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { isSafeTopicFolderName, resolveLocalImageDirs } from '@pinbale/core';
 
-/** فقط نام فایل بدون مسیر؛ جلوگیری از path traversal */
-const SAFE_BASENAME = /^[a-zA-Z0-9._-]+\.(jpe?g|png|webp|gif)$/i;
+const LOCAL_IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
+
+/** نام فایل پس از basename؛ مسیر واقعی با resolve چک می‌شود — فقط پسوند و `..` را محدود می‌کنیم تا نام فارسی/عددی مجاز باشد */
+function isSafeLocalImageBasename(name: string): boolean {
+  if (!name || name.length > 255 || name.includes('..')) return false;
+  if (/[\x00-\x1f\x7f]/.test(name)) return false;
+  const ext = extname(name).toLowerCase();
+  return LOCAL_IMAGE_EXT.has(ext);
+}
 
 /** کش اینستاگرام: `{username}_{timestamp}_{index}.jpg|.mp4` */
 const SAFE_INSTAGRAM_CACHE = /^[a-zA-Z0-9._-]+\.(jpe?g|mp4)$/i;
@@ -20,7 +27,7 @@ export async function registerLocalMediaRoutes(app: FastifyInstance) {
     '/media/local/:filename',
     async (request, reply) => {
       const raw = basename(request.params.filename);
-      if (!SAFE_BASENAME.test(raw)) {
+      if (!isSafeLocalImageBasename(raw)) {
         return reply.code(400).send({ message: 'نام فایل نامعتبر است.' });
       }
 
