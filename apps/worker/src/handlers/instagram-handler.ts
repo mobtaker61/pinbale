@@ -14,6 +14,7 @@ import {
   InstagramScraper,
   InstagramScraperError,
   fetchInstagramPostsViaRapidApi,
+  getMediaItemsForPost,
   probeEgressIp
 } from '@pinbale/instagram';
 import type { MessengerPlatform } from '@pinbale/core';
@@ -79,6 +80,10 @@ export async function processInstagramJob(
         postIncludeCount: deps.config.INSTAGRAM_RAPIDAPI_POST_INCLUDE_COUNT,
         postMaxId: deps.config.INSTAGRAM_RAPIDAPI_POST_MAX_ID
       });
+      deps.logger.info(
+        { requestId, postCount: posts.length },
+        'instagram job: RapidAPI OK (لیست پست آماده است)'
+      );
     } catch (err) {
       await handleInstagramFetchError(err, bot, chatId, deps, requestId, instagramUsername);
       return;
@@ -155,6 +160,22 @@ export async function processInstagramJob(
       return;
     }
 
+    if (rapidKey && deps.config.INSTAGRAM_RAPIDAPI_MESSENGER_FETCH_MEDIA) {
+      const sent = await sendRapidApiPostsByMessengerUrls(bot, chatId, posts, {
+        requestId,
+        logger: deps.logger
+      });
+      if (!sent) {
+        await bot.sendText(chatId, faMessages.instagramError);
+      }
+      return;
+    }
+
+    deps.logger.info(
+      { requestId, postCount: posts.length },
+      'instagram job: دانلود مدیا روی worker (مسیر قدیمی یا INSTAGRAM_RAPIDAPI_MESSENGER_FETCH_MEDIA=false)'
+    );
+
     const downloaded = await downloader.downloadAndSave(posts, cacheDir, instagramUsername);
     if (downloaded.length === 0) {
       await bot.sendText(chatId, faMessages.instagramNoPosts);
@@ -194,12 +215,67 @@ export async function processInstagramJob(
       }
     }
   } catch (err) {
+    const e = err instanceof Error ? err : new Error(String(err));
     deps.logger.error(
-      { err: err instanceof Error ? err.message : err, requestId, instagramUsername },
-      'instagram job: download/send failed'
+      {
+        err: e.message,
+        cause: e.cause instanceof Error ? e.cause.message : e.cause,
+        requestId,
+        instagramUsername
+      },
+      'instagram job: دانلود روی worker یا ارسال فایل ناموفق (معمولاً reach نداشتن به CDN اینستاگرام)'
     );
     await bot.sendText(chatId, faMessages.instagramError);
   }
+}
+
+/** بدون دانلود روی worker: URL را به تلگرام/بله می‌دهیم تا خودشان از CDN بگیرند. */
+async function sendRapidApiPostsByMessengerUrls(
+  bot: BaleAdapter,
+  chatId: string,
+  posts: InstagramPost[],
+  ctx: { requestId: string; logger: Logger }
+): Promise<boolean> {
+  let ok = 0;
+  let fail = 0;
+  for (const post of posts) {
+    const items = getMediaItemsForPost(post);
+    for (let j = 0; j < items.length; j++) {
+      const item = items[j]!;
+      const cap = j === 0 ? post.caption?.slice(0, 900) : undefined;
+      const host = (() => {
+        try {
+          return new URL(item.url).hostname;
+        } catch {
+          return '(bad-url)';
+        }
+      })();
+      try {
+        if (item.kind === 'video') {
+          await bot.sendVideoByUrl(chatId, item.url, cap);
+        } else {
+          await bot.sendPhotoByUrl(chatId, item.url, cap);
+        }
+        ok += 1;
+      } catch (err) {
+        fail += 1;
+        ctx.logger.warn(
+          {
+            err: err instanceof Error ? err.message : err,
+            requestId: ctx.requestId,
+            mediaHost: host,
+            kind: item.kind
+          },
+          'instagram job: ارسال یک مدیا با URL شکست خورد (تلگرام/بله نتوانست CDN را بگیرد؟)'
+        );
+      }
+    }
+  }
+  ctx.logger.info(
+    { requestId: ctx.requestId, sentOk: ok, sentFailed: fail },
+    'instagram job: پایان ارسال مستقیم با URL'
+  );
+  return ok > 0;
 }
 
 async function handleInstagramFetchError(
@@ -212,7 +288,7 @@ async function handleInstagramFetchError(
 ): Promise<void> {
   deps.logger.error(
     { err: err instanceof Error ? err.message : err, requestId, instagramUsername },
-    'instagram job: fetch failed'
+    'instagram job: شکست گرفتن لیست پست (RapidAPI یا اسکرپ)'
   );
   if (err instanceof InstagramNotFoundError) {
     await bot.sendText(chatId, faMessages.instagramNotFound);

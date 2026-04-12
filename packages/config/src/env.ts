@@ -112,7 +112,16 @@ const EnvSchema = z
   /**
    * همان فیلد `maxId` در بدنهٔ POST اسنیپت RapidAPI (صفحه‌بندی؛ اولین درخواست معمولاً رشتهٔ خالی).
    */
-  INSTAGRAM_RAPIDAPI_POST_MAX_ID: z.string().optional().default('')
+  INSTAGRAM_RAPIDAPI_POST_MAX_ID: z.string().optional().default(''),
+  /**
+   * اگر true (پیش‌فرض): بعد از RapidAPI، لینک مستقیم CDN را به API تلگرام/بله می‌دهیم تا خودشان مدیا را بگیرند —
+   * روی سرورهایی که به CDN اینستاگرام reach ندارند لازم است.
+   * اگر false: مثل قبل روی worker دانلود فایل (نیازمند دسترسی شبکه به لینک‌های IG یا پروکسی).
+   */
+  INSTAGRAM_RAPIDAPI_MESSENGER_FETCH_MEDIA: z
+    .string()
+    .default('true')
+    .transform((v) => v !== 'false' && v !== '0')
   })
   .superRefine((data, ctx) => {
     const hasBale = Boolean(data.BALE_BOT_TOKEN?.trim());
