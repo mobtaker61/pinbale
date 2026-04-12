@@ -100,7 +100,11 @@ function extractCaption(r: Record<string, unknown>): string | null {
 }
 
 function videoUrlFromNode(n: Record<string, unknown>): string | null {
-  const direct = pickString(n.video_url);
+  const direct =
+    pickString(n.video_url) ??
+    pickString(n.videoUrl) ??
+    pickString(n.playback_url) ??
+    pickString(n.playbackUrl);
   if (direct) return direct;
   const vv = n.video_versions;
   if (Array.isArray(vv)) {
@@ -127,6 +131,7 @@ function extractMediaFromLeaf(leaf: unknown): InstagramMediaItem | null {
   const isVideo =
     n.is_video === true ||
     n.__typename === 'GraphVideo' ||
+    n.__typename === 'GraphClip' ||
     n.type === 'video' ||
     n.media_type === 2;
   const img = pickImageUrlFromNode(n);
@@ -241,13 +246,24 @@ function mapRapidItemToPost(raw: unknown, index: number): InstagramPost | null {
     r.carouselMedia ??
     r.edge_sidecar_to_children ??
     r.sidecar_children ??
-    r.resources;
+    r.resources ??
+    r.childPosts ??
+    r.child_posts ??
+    r.children ??
+    r.sidecar_medias ??
+    r.sidecarMedias ??
+    r.previewItems ??
+    r.media_items ??
+    r.mediaItems;
   let children: unknown[] | null = null;
   if (Array.isArray(sidecar)) {
     children = sidecar;
   } else if (sidecar && typeof sidecar === 'object' && 'edges' in sidecar) {
     const e = (sidecar as { edges: unknown }).edges;
     if (Array.isArray(e)) children = e;
+  } else if (sidecar && typeof sidecar === 'object' && 'nodes' in sidecar) {
+    const nodes = (sidecar as { nodes: unknown }).nodes;
+    if (Array.isArray(nodes)) children = nodes;
   }
   if (children) {
     for (const c of unwrapEdges(children)) {
