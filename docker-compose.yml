@@ -8,9 +8,6 @@ services:
       # بدون volume، دادهٔ Redis (کرسر موضوع، صف BullMQ، …) با حذف/ساخت مجدد کانتینر از بین می‌رود
       - pinbale-redis-data:/data
 
-volumes:
-  pinbale-redis-data:
-
   api:
     build:
       context: .
@@ -36,3 +33,9 @@ volumes:
     volumes:
       # همان مسیر api تا worker و api هر دو به instagram-cache و sent دسترسی یکسان داشته باشند
       - ./images:/app/images
+    # برای INSTAGRAM_HTTPS_PROXY=http://host.docker.internal:8888 روی لینوکس
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  pinbale-redis-data:
