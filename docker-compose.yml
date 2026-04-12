@@ -4,6 +4,12 @@ services:
     ports:
       - "6379:6379"
     command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      # بدون volume، دادهٔ Redis (کرسر موضوع، صف BullMQ، …) با حذف/ساخت مجدد کانتینر از بین می‌رود
+      - pinbale-redis-data:/data
+
+volumes:
+  pinbale-redis-data:
 
   api:
     build:
