@@ -76,7 +76,8 @@ export async function processInstagramJob(
         postsPath: deps.config.INSTAGRAM_RAPIDAPI_POSTS_PATH.trim(),
         method: deps.config.INSTAGRAM_RAPIDAPI_HTTP_METHOD,
         timeoutMs: deps.config.INSTAGRAM_RAPIDAPI_TIMEOUT_MS,
-        postIncludeCount: deps.config.INSTAGRAM_RAPIDAPI_POST_INCLUDE_COUNT
+        postIncludeCount: deps.config.INSTAGRAM_RAPIDAPI_POST_INCLUDE_COUNT,
+        postMaxId: deps.config.INSTAGRAM_RAPIDAPI_POST_MAX_ID
       });
     } catch (err) {
       await handleInstagramFetchError(err, bot, chatId, deps, requestId, instagramUsername);

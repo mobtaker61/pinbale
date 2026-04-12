@@ -108,7 +108,11 @@ const EnvSchema = z
   INSTAGRAM_RAPIDAPI_POST_INCLUDE_COUNT: z
     .string()
     .default('false')
-    .transform((v) => v === 'true' || v === '1')
+    .transform((v) => v === 'true' || v === '1'),
+  /**
+   * همان فیلد `maxId` در بدنهٔ POST اسنیپت RapidAPI (صفحه‌بندی؛ اولین درخواست معمولاً رشتهٔ خالی).
+   */
+  INSTAGRAM_RAPIDAPI_POST_MAX_ID: z.string().optional().default('')
   })
   .superRefine((data, ctx) => {
     const hasBale = Boolean(data.BALE_BOT_TOKEN?.trim());

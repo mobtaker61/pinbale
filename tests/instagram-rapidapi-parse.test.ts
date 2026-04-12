@@ -52,4 +52,24 @@ describe('parseRapidApiPostsPayload', () => {
     const posts = parseRapidApiPostsPayload({ posts: arr }, 5);
     expect(posts.length).toBeLessThanOrEqual(5);
   });
+
+  test('nested response.result.items and image_versions2', () => {
+    const posts = parseRapidApiPostsPayload(
+      {
+        result: {
+          items: [
+            {
+              id: 'a',
+              image_versions2: {
+                candidates: [{ url: 'https://cdn.example.com/iv2.jpg', width: 1080 }]
+              }
+            }
+          ]
+        }
+      },
+      9
+    );
+    expect(posts).toHaveLength(1);
+    expect(posts[0]!.items[0]!.url).toContain('iv2.jpg');
+  });
 });

@@ -17,6 +17,8 @@ export type RapidApiInstagramOptions = {
   timeoutMs: number;
   /** اگر true، در بدنهٔ POST فیلد `count` برابر maxPosts هم فرستاده می‌شود */
   postIncludeCount: boolean;
+  /** مطابق اسنیپت رسمی instagram120: `{ username, maxId }` — اولین صفحه معمولاً `''` */
+  postMaxId: string;
 };
 
 function coerceNumber(v: unknown): number {
@@ -26,8 +28,56 @@ function coerceNumber(v: unknown): number {
 }
 
 function pickString(v: unknown): string | null {
-  if (typeof v === 'string' && v.trim().startsWith('http')) return v.trim();
+  if (typeof v !== 'string') return null;
+  const t = v.trim();
+  if (!t) return null;
+  if (t.startsWith('https://') || t.startsWith('http://')) return t;
+  if (t.startsWith('//')) return `https:${t}`;
   return null;
+}
+
+function pickImageUrlFromNode(n: Record<string, unknown>): string | null {
+  const fromVersions = (): string | null => {
+    const iv2 = n.image_versions2;
+    if (iv2 && typeof iv2 === 'object') {
+      const c = (iv2 as { candidates?: unknown }).candidates;
+      if (Array.isArray(c)) {
+        let best = '';
+        let bestW = 0;
+        for (const x of c) {
+          if (x && typeof x === 'object') {
+            const u = pickString((x as { url?: unknown }).url);
+            const w = coerceNumber((x as { width?: unknown }).width);
+            if (u && w >= bestW) {
+              best = u;
+              bestW = w;
+            }
+          }
+        }
+        if (best) return best;
+        for (const x of c) {
+          if (x && typeof x === 'object') {
+            const u = pickString((x as { url?: unknown }).url);
+            if (u) return u;
+          }
+        }
+      }
+    }
+    return null;
+  };
+
+  return (
+    pickString(n.display_url) ??
+    pickString(n.displayUrl) ??
+    pickString(n.image_url) ??
+    pickString(n.imageUrl) ??
+    pickString(n.thumbnail_url) ??
+    pickString(n.thumbnail_src) ??
+    pickString(n.media_url) ??
+    pickString(n.mediaUrl) ??
+    pickString(n.url) ??
+    fromVersions()
+  );
 }
 
 function extractCaption(r: Record<string, unknown>): string | null {
@@ -79,14 +129,7 @@ function extractMediaFromLeaf(leaf: unknown): InstagramMediaItem | null {
     n.__typename === 'GraphVideo' ||
     n.type === 'video' ||
     n.media_type === 2;
-  const img =
-    pickString(n.display_url) ??
-    pickString(n.displayUrl) ??
-    pickString(n.image_url) ??
-    pickString(n.imageUrl) ??
-    pickString(n.thumbnail_url) ??
-    pickString(n.thumbnail_src) ??
-    pickString(n.media_url);
+  const img = pickImageUrlFromNode(n);
   const vid = videoUrlFromNode(n);
   if (isVideo && vid) return { kind: 'video', url: vid };
   if (vid && !img) return { kind: 'video', url: vid };
@@ -120,6 +163,20 @@ function extractArrayPayload(data: unknown): unknown[] | null {
   if (Array.isArray(data)) return data;
   if (!data || typeof data !== 'object') return null;
   const o = data as Record<string, unknown>;
+
+  if (typeof o.body === 'string') {
+    const t = o.body.trim();
+    if (t.startsWith('{') || t.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(t) as unknown;
+        const inner = extractArrayPayload(parsed);
+        if (inner) return inner;
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
   const keys = [
     'data',
     'posts',
@@ -132,17 +189,26 @@ function extractArrayPayload(data: unknown): unknown[] | null {
     'last_posts',
     'edges',
     'timeline',
-    'feed'
+    'feed',
+    'rows',
+    'list',
+    'contents',
+    'media'
   ];
   for (const k of keys) {
     const v = o[k];
     if (Array.isArray(v) && v.length > 0) return v;
   }
-  const d = o.data;
-  if (d && typeof d === 'object') {
-    const inner = extractArrayPayload(d);
-    if (inner) return inner;
+
+  const nestedObjectKeys = ['data', 'result', 'response', 'payload'];
+  for (const k of nestedObjectKeys) {
+    const v = o[k];
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const inner = extractArrayPayload(v);
+      if (inner) return inner;
+    }
   }
+
   const u = o.user;
   if (u && typeof u === 'object') {
     const uo = u as Record<string, unknown>;
@@ -150,6 +216,8 @@ function extractArrayPayload(data: unknown): unknown[] | null {
       const v = uo[k];
       if (Array.isArray(v) && v.length > 0) return v;
     }
+    const innerUser = extractArrayPayload(uo);
+    if (innerUser) return innerUser;
   }
   return null;
 }
@@ -266,7 +334,10 @@ export async function fetchInstagramPostsViaRapidApi(
   if (opts.method === 'POST') {
     headers['Content-Type'] = 'application/json';
     const u = new URL(baseUrl);
-    const body: Record<string, string | number> = { username };
+    const body: Record<string, string | number> = {
+      username,
+      maxId: opts.postMaxId
+    };
     if (opts.postIncludeCount) {
       body.count = maxPosts;
     }

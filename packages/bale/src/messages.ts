@@ -60,8 +60,9 @@ export const faMessages = {
   instagramBlocked: 'این حساب تعلیق‌شده است ⛔',
   instagramError: 'خطا در دانلود پست‌های اینستاگرام. بعداً دوباره سعی کنید ❌',
   instagramRateLimited:
-    'اینستاگرام الان محدودیت نرخ گذاشت (۴۲۹). چند دقیقه بعد دوباره امتحان کنید.\n' +
-    'روی IP دیتاسنتر معمولاً بدون `INSTAGRAM_HTTPS_PROXY` (ترجیحاً residential) یا فاصلهٔ بیشتر بین درخواست‌ها جواب نمی‌دهد.',
+    'محدودیت نرخ (۴۲۹). چند دقیقه بعد دوباره امتحان کنید.\n' +
+    'اگر از RapidAPI استفاده می‌کنید، سقف پلن رایگان را در داشبورد RapidAPI بررسی کنید.\n' +
+    'در حالت اسکرپ مستقیم، روی IP دیتاسنتر معمولاً بدون `INSTAGRAM_HTTPS_PROXY` (ترجیحاً residential) جواب نمی‌دهد.',
   instagramAccessDenied:
     'اینستاگرام این درخواست را قبول نکرد (محدودیت ربات، IP دیتاسنتر، یا ریدایرکت به ورود).\n' +
     '۱) کوکی‌های `sessionid` و `csrftoken` را با هم در `.env` بگذارید (`INSTAGRAM_SESSION_ID` و `INSTAGRAM_CSRF_TOKEN`).\n' +
