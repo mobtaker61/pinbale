@@ -258,7 +258,7 @@ export async function processInstagramJob(
   }
 }
 
-/** کاروسل: دانلود موازی همهٔ اسلایدها سپس ارسال ترتیبی (کمتر تاخیر و کمتر قطع شدن اتصال). */
+/** کاروسل: ارسال هیبرید هر اسلاید (عکس: URL→فایل، ویدیو: فایل→URL) تا وابستگی کامل به دانلود CDN حذف شود. */
 async function sendCarouselPostParallel(
   bot: BaleAdapter,
   chatId: string,
@@ -273,42 +273,70 @@ async function sendCarouselPostParallel(
 ): Promise<{ ok: number; fail: number }> {
   let ok = 0;
   let fail = 0;
-  const settled = await Promise.allSettled(
-    items.map(async (item, slideIdx) => {
-      const ext = item.kind === 'video' ? 'mp4' : 'jpg';
-      const dest = join(
-        cacheDir,
-        `${instagramUsername}_car_${batchTs}_${carSeq}_${slideIdx}.${ext}`
-      );
-      await downloader.downloadMediaToFile(item.url, dest, item.kind);
-      return { slideIdx, dest, item } as const;
-    })
-  );
 
-  const slides: { slideIdx: number; dest: string; item: InstagramMediaItem }[] = [];
-  for (let i = 0; i < settled.length; i++) {
-    const r = settled[i]!;
-    if (r.status === 'fulfilled') {
-      slides.push(r.value);
-    } else {
-      fail += 1;
-      ctx.logger.warn(
-        {
-          err: r.reason instanceof Error ? r.reason.message : r.reason,
-          requestId: ctx.requestId,
-          slideIndex: i,
-          kind: items[i]!.kind
-        },
-        'instagram job: دانلود یک اسلاید کاروسل ناموفق'
-      );
-    }
-  }
-  slides.sort((a, b) => a.slideIdx - b.slideIdx);
-
-  for (const { slideIdx, dest, item } of slides) {
+  for (let slideIdx = 0; slideIdx < items.length; slideIdx++) {
+    const item = items[slideIdx]!;
     const cap = slideIdx === 0 ? post.caption?.slice(0, 900) : undefined;
     const host = cdnMediaHost(item.url);
+    const ext = item.kind === 'video' ? 'mp4' : 'jpg';
+    const dest = join(cacheDir, `${instagramUsername}_car_${batchTs}_${carSeq}_${slideIdx}.${ext}`);
     try {
+      if (item.kind === 'image') {
+        try {
+          await bot.sendPhotoByUrl(chatId, item.url, cap);
+          ok += 1;
+          continue;
+        } catch (urlErr) {
+          ctx.logger.info(
+            {
+              err: urlErr instanceof Error ? urlErr.message : urlErr,
+              requestId: ctx.requestId,
+              mediaHost: host,
+              kind: item.kind,
+              slideIndex: slideIdx
+            },
+            'instagram job: کاروسل عکس با URL ناموفق، تلاش دانلود+فایل'
+          );
+        }
+      }
+
+      try {
+        await downloader.downloadMediaToFile(item.url, dest, item.kind);
+      } catch (dlErr) {
+        if (item.kind === 'video') {
+          try {
+            await bot.sendVideoByUrl(chatId, item.url, cap);
+            ok += 1;
+            continue;
+          } catch (urlErr) {
+            fail += 1;
+            ctx.logger.warn(
+              {
+                err: urlErr instanceof Error ? urlErr.message : urlErr,
+                requestId: ctx.requestId,
+                mediaHost: host,
+                kind: item.kind,
+                slideIndex: slideIdx
+              },
+              'instagram job: ویدیوی کاروسل نه با فایل نه با URL ارسال نشد'
+            );
+            continue;
+          }
+        }
+        fail += 1;
+        ctx.logger.warn(
+          {
+            err: dlErr instanceof Error ? dlErr.message : dlErr,
+            requestId: ctx.requestId,
+            mediaHost: host,
+            kind: item.kind,
+            slideIndex: slideIdx
+          },
+          'instagram job: دانلود اسلاید کاروسل ناموفق'
+        );
+        continue;
+      }
+
       if (item.kind === 'video') {
         await bot.sendVideoFromFile(chatId, dest, cap);
       } else {
@@ -410,6 +438,15 @@ async function sendRapidApiPostsByMessengerUrls(
   for (const post of posts) {
     const items = getMediaItemsForPost(post);
     if (items.length === 0) continue;
+    ctx.logger.info(
+      {
+        requestId: ctx.requestId,
+        postId: post.id,
+        mediaCount: items.length,
+        mediaKinds: items.map((i) => i.kind)
+      },
+      'instagram job: post media parsed'
+    );
 
     if (items.length > 1) {
       mediaIndex += 1;
