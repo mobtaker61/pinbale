@@ -79,7 +79,36 @@ const EnvSchema = z
   /** حداکثر تعداد درخواست به `web_profile_info` (بعد از ۴۲۹ یا پیام rate limit در JSON با تأخیر تکرار می‌شود؛ حداقل ۱) */
   INSTAGRAM_WEB_RETRY_MAX: z.coerce.number().min(1).max(12).default(5),
   /** پایهٔ تأخیر بین تلاش‌ها (میلی‌ثانیه)؛ با jitter ضرب می‌شود */
-  INSTAGRAM_WEB_RETRY_BASE_MS: z.coerce.number().min(1000).max(120_000).default(5000)
+  INSTAGRAM_WEB_RETRY_BASE_MS: z.coerce.number().min(1000).max(120_000).default(5000),
+
+  /**
+   * اگر مقدار داشته باشد، پست‌ها فقط از RapidAPI گرفته می‌شود (اسکرپ مستقیم اینستاگرام غیرفعال).
+   * کلید را از داشبورد RapidAPI بگیرید؛ در git قرار ندهید.
+   */
+  INSTAGRAM_RAPIDAPI_KEY: z.string().optional(),
+  /** معمولاً `instagram120.p.rapidapi.com` — باید با «Code snippets» همان API که subscribe کرده‌اید یکی باشد */
+  INSTAGRAM_RAPIDAPI_HOST: z
+    .string()
+    .optional()
+    .transform((s) => (s?.trim() ? s.trim() : 'instagram120.p.rapidapi.com')),
+  /**
+   * مسیر endpoint (با / شروع شود). می‌توانید `{username}` بگذارید (مثلاً `/user/{username}/media`).
+   * اگر پیش‌فرض با API شما جور نبود، همان مسیری را که در RapidAPI playground می‌بینید اینجا بگذارید.
+   */
+  INSTAGRAM_RAPIDAPI_POSTS_PATH: z
+    .string()
+    .optional()
+    .transform((s) => (s?.trim() ? s.trim() : '/api/instagram/posts')),
+  INSTAGRAM_RAPIDAPI_HTTP_METHOD: z.enum(['GET', 'POST']).default('POST'),
+  INSTAGRAM_RAPIDAPI_TIMEOUT_MS: z.coerce.number().min(5_000).max(180_000).default(60_000),
+  /**
+   * برای POST: علاوه بر `username` فیلد `count` هم با مقدار INSTAGRAM_MAX_POSTS فرستاده شود
+   * (فقط اگر API شما این فیلد را می‌خواهد).
+   */
+  INSTAGRAM_RAPIDAPI_POST_INCLUDE_COUNT: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1')
   })
   .superRefine((data, ctx) => {
     const hasBale = Boolean(data.BALE_BOT_TOKEN?.trim());

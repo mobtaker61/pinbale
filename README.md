@@ -48,7 +48,9 @@ Selection controlled by `PINTEREST_PROVIDER_MODE`.
 ## Bot Commands (خلاصه)
 
 - `/list` — انتخاب موضوع از پوشه‌های `images` و ارسال ترتیبی (نام فایل عددی).
-- `/instagram <username>` یا `/ig <username>` — پست‌های اخیر پروفایل **عمومی** (بدون لاگین؛ حداکثر تعداد با `INSTAGRAM_MAX_POSTS` در `.env`، پیش‌فرض ۹، سقف ۲۰).
+- `/instagram <username>` یا `/ig <username>` — پست‌های اخیر پروفایل **عمومی** (حداکثر تعداد با `INSTAGRAM_MAX_POSTS` در `.env`، پیش‌فرض ۹، سقف ۲۰).
+  - **پیشنهاد production:** `INSTAGRAM_RAPIDAPI_KEY` را در `.env` بگذارید تا پست‌ها از [RapidAPI](https://rapidapi.com/) (مثلاً APIهای خانوادهٔ `instagram120`) گرفته شود؛ `INSTAGRAM_RAPIDAPI_POSTS_PATH` و `INSTAGRAM_RAPIDAPI_HOST` باید دقیقاً مطابق «Code Snippets» همان سرویسی باشد که subscribe کرده‌اید.
+  - اگر کلید RapidAPI خالی باشد، مسیر قدیمی (اسکرپ وب + در صورت نیاز `scraper-instagram`) استفاده می‌شود.
 - `/help`، `/start`
 
 ## API Endpoints
